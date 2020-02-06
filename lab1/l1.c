@@ -2,12 +2,37 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define MAX 10 // size of queues
+
+// event types
+enum event_type {
+    PROCESS_ARRIVAL,
+    PROCESS_ARRIVE_CPU,
+    PROCESS_FINISH_CPU,
+    PROCESS_EXIT_SYSTEM,
+    PROCESS_ARRIVE_DISK1,
+    PROCESS_ARRIVE_DISK2,
+    PROCESS_FINISH_DISK1,
+    PROCESS_FINISH_DISK2,
+    PROCESS_ARRIVE_NETWORK,
+    PROCESS_FINISH_NETWORK,
+    PROCESS_FINISH
+
+};
+
+// events need a time, a type, and a process ID
+struct event {
+    int time;
+    enum event_type type;
+    int id;
+};
 
 void read_config();
 int randNum(int min, int max);
 int processID();
+struct event newEvent();
 
 // FIFO queue functions
 void display(int queue[], int front, int rear);
@@ -15,23 +40,21 @@ void enqueue(int n, int ID); // n: cpu = 1, disk1 = 2, disk2 = 3, network = 4
 int dequeue(int n);
 void pqSort();
 
-enum eType {
-    EXECUTE
-};
-
-struct event {
-    int time;
-};
-
 // priority queue functions - add function to generate events
 void pDisplay();
 void pEnqueue(struct event newEvent);
 struct event pDequeue();
 
-
 // global config.txt values
 int SEED, INIT_TIME, FIN_TIME, ARRIVE_MIN, ARRIVE_MAX, QUIT_PROB, NETWORK_PROB, CPU_MIN, CPU_MAX,
  DISK1_MIN, DISK1_MAX, DISK2_MIN, DISK2_MAX, NETWORK_MIN, NETWORK_MAX;
+
+// keeps track of whether or not devices are occupied 
+// busy = 1, free = 0
+bool cpuBusy, d1Busy, d2Busy, netBusy; 
+
+// event handlers
+void handle_process_arrival(struct event oldEvent);
 
 // FIFO queues
 int cpuQ[MAX], cpuFront = -1, cpuRear = -1; // CPU queue (1)
@@ -53,34 +76,28 @@ int main() {
 
     srand(SEED);
 
-    int number = randNum(ARRIVE_MIN, ARRIVE_MAX);
-    //printf("\nnumber = %d\n", number);
+    struct event new_event = newEvent();
 
-    struct event newEvent;
-    newEvent.time = 5;
+    pEnqueue(new_event);
 
-    // testing priority queue
-    for(size_t i = 0; i < MAX; i++) {
-        pEnqueue(newEvent);
-        newEvent.time = randNum(ARRIVE_MIN, ARRIVE_MAX);
-    }
-    printf("\nbefore dequeue:\n");
     pDisplay();
-    printf("\npFront: %d pRear: %d\n", pFront, pRear);
 
     struct event e = pDequeue();
-    printf("\nafter dequeue:\n");
+    handle_process_arrival(e);
+
+    printf("\n");
     pDisplay();
-    printf("\ne: %d\n", e.time);
-    printf("pFront: %d pRear: %d\n", pFront, pRear);
 
-    pqSort();
-    printf("\nafter sort:\n");
-    pDisplay();
-    printf("pFront: %d pRear: %d\n", pFront, pRear);
+    // while(pq[pFront].id != 0) {
+    //     struct event e = pDequeue();
 
+    //     switch(e.type) {
 
-
+    //         case PROCESS_ARRIVAL:
+    //             handle_process_arrival(e);
+    //             break;
+    //     }
+    // }
 }
 
 // reads and save all constants from the CONFIG.txt file 
@@ -114,6 +131,17 @@ int processID() {
     static int counter;
     counter++;
     return counter;
+}
+
+// generate new events
+struct event newEvent() {
+    struct event newEvent;
+    newEvent.time = randNum(ARRIVE_MIN, ARRIVE_MAX);
+    newEvent.type = PROCESS_ARRIVAL;
+    newEvent.id = processID();
+
+    return newEvent;
+
 }
 
 // adds a process to queue n
@@ -247,13 +275,14 @@ void display(int queue[], int front, int rear) {
 void pEnqueue(struct event newEvent) {
     if(pRear == -1) {
         pFront = pRear = 0;
-        pq[pRear].time = newEvent.time;
+        pq[pRear] = newEvent;
+        
     } else if (pRear == MAX-1) {
         printf("\nqueue is full\n");
         return;
     } else {
         pRear++;
-        pq[pRear].time = newEvent.time;
+        pq[pRear] = newEvent;
 
     }
 
@@ -301,7 +330,30 @@ void pDisplay() {
     }
 
     for(size_t i = pFront; i <= pRear; i++) {
-        printf("%d ", pq[i].time);
+        printf("\ntime: %d type: %d id: %d", pq[i].time, pq[i].type, pq[i].id);
     }
+}
+
+
+void handle_process_arrival(struct event oldEvent) {
+    // if the cpu is busy or if the cpu queue is nonempty
+    if(cpuBusy == 1 || cpuQ[cpuFront] != 0){
+        enqueue(1, oldEvent.id);
+    // cpu is not occupied AND queue is empty
+    } else { 
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_CPU;
+        newEvent.id = oldEvent.id;
+        cpuBusy = 1;
+        pEnqueue(newEvent);
+    }
+
+    struct event newEvent;
+    newEvent.time = oldEvent.time + randNum(ARRIVE_MIN, ARRIVE_MAX);
+    newEvent.type = PROCESS_ARRIVAL;
+    newEvent.id = processID();
+    pEnqueue(newEvent);
+
 }
 
