@@ -57,6 +57,16 @@ bool cpuBusy, d1Busy, d2Busy, netBusy;
 void handle_process_arrival(struct event oldEvent);
 void handle_process_arrive_cpu(struct event oldEvent);
 void handle_process_finish_cpu(struct event oldEvent);
+void handle_process_exit_system(struct event oldEvent);
+void handle_process_arrive_disk1(struct event oldEvent);
+void handle_process_arrive_disk2(struct event oldEvent);
+void handle_process_finish_disk1(struct event oldEvent);
+void handle_process_finish_disk2(struct event oldEvent);
+void handle_process_arrive_network(struct event oldEvent);
+void handle_process_finish_network(struct event oldEvent);
+
+
+
 
 
 // FIFO queues
@@ -79,7 +89,7 @@ int main() {
 
     srand(SEED);
 
-    struct event new_event = newEvent();
+    struct event e = newEvent();
 
 
 }
@@ -319,12 +329,16 @@ void pDisplay() {
 }
 
 
+// EVENT HANDLERS:
+
 void handle_process_arrival(struct event oldEvent) {
     // if the cpu is busy or if the cpu queue is nonempty
     if(cpuBusy == 1 || cpuQ[cpuFront] != 0){
+        printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
     // cpu is not occupied AND queue is empty
     } else { 
+        printf("\ntime %d: process %d arrives to the system", oldEvent.time, oldEvent.id);
         struct event newEvent;
         newEvent.time = oldEvent.time;
         newEvent.type = PROCESS_ARRIVE_CPU;
@@ -337,11 +351,13 @@ void handle_process_arrival(struct event oldEvent) {
     newEvent.time = oldEvent.time + randNum(ARRIVE_MIN, ARRIVE_MAX);
     newEvent.type = PROCESS_ARRIVAL;
     newEvent.id = processID();
+    printf("\ntime %d: process %d arrives to the system", newEvent.time, newEvent.id);
     pEnqueue(newEvent);
 
 }
 
 void handle_process_arrive_cpu(struct event oldEvent) {
+    printf("\ntime %d: process %d arrives to the CPU", oldEvent.time, oldEvent.id);
     struct event newEvent;
     newEvent.time = oldEvent.time + randNum(CPU_MIN, CPU_MAX);
     newEvent.type = PROCESS_FINISH_CPU;
@@ -352,6 +368,8 @@ void handle_process_arrive_cpu(struct event oldEvent) {
 void handle_process_finish_cpu(struct event oldEvent) {
     cpuBusy = 0;
     int num = randNum(1, 100);
+
+    printf("\ntime %d: process %d exits the CPU", oldEvent.time, oldEvent.id);
 
     // process exits the system
     if (num < QUIT_PROB) {
@@ -397,7 +415,136 @@ void handle_process_finish_cpu(struct event oldEvent) {
     } else { 
         enqueue(3, oldEvent.id);
     }
+
+
 }
+
+void handle_process_exit_system(struct event oldEvent) {
+    printf("\ntime %d: process %d exits the system", oldEvent.time, oldEvent.id);
+
+}
+
+void handle_process_arrive_disk1(struct event oldEvent) {
+    printf("\ntime %d: process %d arrives to disk 1", oldEvent.time, oldEvent.id);
+    struct event newEvent;
+    newEvent.time = oldEvent.time + randNum(DISK1_MIN, DISK1_MAX);
+    newEvent.type = PROCESS_FINISH_DISK1;
+    newEvent.id = oldEvent.id;
+    pEnqueue(newEvent);
+}
+
+void handle_process_arrive_disk2(struct event oldEvent) {
+    printf("\ntime %d: process %d arrives to disk 2", oldEvent.time, oldEvent.id);
+    struct event newEvent;
+    newEvent.time = oldEvent.time + randNum(DISK2_MIN, DISK2_MAX);
+    newEvent.type = PROCESS_FINISH_DISK2;
+    newEvent.id = oldEvent.id;
+    pEnqueue(newEvent);
+}
+
+void handle_process_finish_disk1(struct event oldEvent) {
+
+    d1Busy = 0; // set disk to not occupied
+    printf("\ntime %d: process %d exits disk 1", oldEvent.time, oldEvent.id);
+
+    // if the cpu is busy or if the cpu queue is nonempty
+    if(cpuBusy == 1 || cpuQ[cpuFront] != 0){
+        printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
+        enqueue(1, oldEvent.id);
+    // cpu is not occupied AND queue is empty
+    } else { 
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_CPU;
+        newEvent.id = oldEvent.id;
+        cpuBusy = 1;
+        pEnqueue(newEvent);
+    }
+
+    // if disk queue is nonempty
+    if(d1Q[d1Front] != 0) {
+        int newID = dequeue(2); // pull process off disk1 queue
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_DISK1;
+        newEvent.id = newID;
+        d1Busy = 1; // set disk1 to occupied
+        pEnqueue(newEvent);
+    }
+}
+
+void handle_process_finish_disk2(struct event oldEvent) {
+
+    d2Busy = 0; // set disk to not occupied
+    printf("\ntime %d: process %d exits disk 2", oldEvent.time, oldEvent.id);
+
+    // if the cpu is busy or if the cpu queue is nonempty
+    if(cpuBusy == 1 || cpuQ[cpuFront] != 0){
+        printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
+        enqueue(1, oldEvent.id);
+    // cpu is not occupied AND queue is empty
+    } else { 
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_CPU;
+        newEvent.id = oldEvent.id;
+        cpuBusy = 1;
+        pEnqueue(newEvent);
+    }
+
+    // if disk queue is nonempty
+    if(d2Q[d2Front] != 0) {
+        int newID = dequeue(3); // pull process off disk2 queue
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_DISK2;
+        newEvent.id = newID;
+        d2Busy = 1; // set disk2 to occupied
+        pEnqueue(newEvent);
+    }
+}
+
+void handle_process_arrive_network(struct event oldEvent) {
+    printf("\ntime %d: process %d arrives to the network", oldEvent.time, oldEvent.id);
+    struct event newEvent;
+    newEvent.time = oldEvent.time + randNum(NETWORK_MIN, NETWORK_MAX);
+    newEvent.type = PROCESS_FINISH_NETWORK;
+    newEvent.id = oldEvent.id;
+    pEnqueue(newEvent);
+
+}
+
+void handle_process_finish_network(struct event oldEvent) {
+
+    netBusy = 0; // set network to not occupied
+    printf("\ntime %d: process %d exits the network", oldEvent.time, oldEvent.id);
+
+    // if the cpu is busy or if the cpu queue is nonempty
+    if(cpuBusy == 1 || cpuQ[cpuFront] != 0){
+        printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
+        enqueue(1, oldEvent.id);
+    // cpu is not occupied AND queue is empty
+    } else { 
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_CPU;
+        newEvent.id = oldEvent.id;
+        cpuBusy = 1;
+        pEnqueue(newEvent);
+    }
+
+    // if network queue is nonempty
+    if(netQ[netFront] != 0) {
+        int newID = dequeue(4); // pull process off network queue
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_NETWORK;
+        newEvent.id = newID;
+        netBusy = 1; // set network to occupied
+        pEnqueue(newEvent);
+    }
+}
+
 
 
 
