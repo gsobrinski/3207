@@ -55,6 +55,9 @@ bool cpuBusy, d1Busy, d2Busy, netBusy;
 
 // event handlers
 void handle_process_arrival(struct event oldEvent);
+void handle_process_arrive_cpu(struct event oldEvent);
+void handle_process_finish_cpu(struct event oldEvent);
+
 
 // FIFO queues
 int cpuQ[MAX], cpuFront = -1, cpuRear = -1; // CPU queue (1)
@@ -78,26 +81,7 @@ int main() {
 
     struct event new_event = newEvent();
 
-    pEnqueue(new_event);
 
-    pDisplay();
-
-    struct event e = pDequeue();
-    handle_process_arrival(e);
-
-    printf("\n");
-    pDisplay();
-
-    // while(pq[pFront].id != 0) {
-    //     struct event e = pDequeue();
-
-    //     switch(e.type) {
-
-    //         case PROCESS_ARRIVAL:
-    //             handle_process_arrival(e);
-    //             break;
-    //     }
-    // }
 }
 
 // reads and save all constants from the CONFIG.txt file 
@@ -356,4 +340,64 @@ void handle_process_arrival(struct event oldEvent) {
     pEnqueue(newEvent);
 
 }
+
+void handle_process_arrive_cpu(struct event oldEvent) {
+    struct event newEvent;
+    newEvent.time = oldEvent.time + randNum(CPU_MIN, CPU_MAX);
+    newEvent.type = PROCESS_FINISH_CPU;
+    newEvent.id = oldEvent.id;
+    pEnqueue(newEvent);
+}
+
+void handle_process_finish_cpu(struct event oldEvent) {
+    cpuBusy = 0;
+    int num = randNum(1, 100);
+
+    // process exits the system
+    if (num < QUIT_PROB) {
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_EXIT_SYSTEM;
+        newEvent.id = oldEvent.id;
+        pEnqueue(newEvent);
+    
+    // process enters the network
+    } else if(num < NETWORK_PROB) {
+        if(netBusy == 0) { // if network is not occupied
+            struct event newEvent;
+            newEvent.time = oldEvent.time;
+            newEvent.type = PROCESS_ARRIVE_NETWORK;
+            newEvent.id = oldEvent.id;
+            netBusy = 1;
+            pEnqueue(newEvent);
+        } else { // if network is busy, put the process on the network queue
+            enqueue(4, oldEvent.id);
+        }
+    // process enters one of the disks
+    } else if (d1Busy == 0) { // if disk1 is not occupied
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_DISK1;
+        newEvent.id = oldEvent.id;
+        d1Busy = 1;
+        pEnqueue(newEvent);
+
+    } else if (d2Busy == 0) { // if disk2 is not occupied
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_DISK2;
+        newEvent.id = oldEvent.id;
+        d2Busy = 1;
+        pEnqueue(newEvent);
+
+    // add to disk1 queue 
+    } else if (sizeof(d1Q)/sizeof(d1Q[0]) < sizeof(d2Q)/sizeof(d2Q[0])){ 
+        enqueue(2, oldEvent.id);
+    // add to disk2 queue
+    } else { 
+        enqueue(3, oldEvent.id);
+    }
+}
+
+
 
