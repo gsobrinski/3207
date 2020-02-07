@@ -64,16 +64,15 @@ void handle_process_finish_disk1(struct event oldEvent);
 void handle_process_finish_disk2(struct event oldEvent);
 void handle_process_arrive_network(struct event oldEvent);
 void handle_process_finish_network(struct event oldEvent);
-
-
+void handle_process_finish(struct event oldEvent);
 
 
 
 // FIFO queues
-int cpuQ[MAX], cpuFront = -1, cpuRear = -1; // CPU queue (1)
-int d1Q[MAX], d1Front = -1, d1Rear = -1; // disk 1 queue (2)
-int d2Q[MAX], d2Front = -1, d2Rear = -1; // disk 2 queue (3)
-int netQ[MAX], netFront = -1, netRear = -1; // network queue (4)
+int cpuQ[MAX], cpuFront = -1, cpuRear = -1, cpuSize = 0; // CPU queue (1)
+int d1Q[MAX], d1Front = -1, d1Rear = -1, d1Size = 0; // disk 1 queue (2)
+int d2Q[MAX], d2Front = -1, d2Rear = -1, d2Size = 0; // disk 2 queue (3)
+int netQ[MAX], netFront = -1, netRear = -1, netSize = 0;; // network queue (4)
 
 // priority queue
 struct event pq[MAX];
@@ -89,7 +88,22 @@ int main() {
 
     srand(SEED);
 
-    struct event e = newEvent();
+    // create initial events
+    struct event first, last;
+    first.time = INIT_TIME;
+    first.type = PROCESS_ARRIVAL;
+    first.id = processID();
+    last.time = FIN_TIME;
+    last.type = PROCESS_FINISH;
+    last.id = processID();
+    pEnqueue(first);
+    pEnqueue(last);
+
+    bool running = true;
+
+    while(running = true) {
+
+    }
 
 
 }
@@ -120,7 +134,7 @@ int randNum(int min, int max) {
     return n;
 }
 
-// generates and returns a unique process ID
+// generates and returns a unique process ID 
 int processID() {
     static int counter;
     counter++;
@@ -153,6 +167,9 @@ void enqueue(int n, int ID) {
             cpuQ[cpuRear] = ID;
 
         }
+
+        cpuSize++;
+
     } else if (n == 2) {
         if(d1Rear == -1) {
             d1Front = d1Rear = 0;
@@ -165,6 +182,9 @@ void enqueue(int n, int ID) {
             d1Q[d1Rear] = ID;
 
         }
+
+        d1Size++;
+
     } else if (n == 3) {
         if(d2Rear == -1) {
             d2Front = d2Rear = 0;
@@ -177,6 +197,9 @@ void enqueue(int n, int ID) {
             d2Q[d2Rear] = ID;
 
         }
+
+        d2Size++;
+
     } else if (n == 4) {
         if(netRear == -1) {
             netFront = netRear = 0;
@@ -189,6 +212,9 @@ void enqueue(int n, int ID) {
             netQ[netRear] = ID;
 
         }
+
+        netSize++;
+
     }
 
 }
@@ -267,6 +293,7 @@ void display(int queue[], int front, int rear) {
 
 // adds an event to the priority queue
 void pEnqueue(struct event newEvent) {
+
     if(pRear == -1) {
         pFront = pRear = 0;
         pq[pRear] = newEvent;
@@ -279,6 +306,9 @@ void pEnqueue(struct event newEvent) {
         pq[pRear] = newEvent;
 
     }
+
+    // sort the priority queue
+    pqSort();
 
 }
 
@@ -332,11 +362,11 @@ void pDisplay() {
 // EVENT HANDLERS:
 
 void handle_process_arrival(struct event oldEvent) {
-    // if the cpu is busy or if the cpu queue is nonempty
-    if(cpuBusy == 1 || cpuQ[cpuFront] != 0){
+    // if the cpu is busy or if the cpu queue is nonempty, add to CPU queue
+    if(cpuBusy == 1 || cpuSize > 0){
         printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
-    // cpu is not occupied AND queue is empty
+    // if cpu is not occupied AND queue is empty, create new event
     } else { 
         printf("\ntime %d: process %d arrives to the system", oldEvent.time, oldEvent.id);
         struct event newEvent;
@@ -347,6 +377,7 @@ void handle_process_arrival(struct event oldEvent) {
         pEnqueue(newEvent);
     }
 
+    // create new event
     struct event newEvent;
     newEvent.time = oldEvent.time + randNum(ARRIVE_MIN, ARRIVE_MAX);
     newEvent.type = PROCESS_ARRIVAL;
@@ -408,10 +439,9 @@ void handle_process_finish_cpu(struct event oldEvent) {
         d2Busy = 1;
         pEnqueue(newEvent);
 
-    // add to disk1 queue 
-    } else if (sizeof(d1Q)/sizeof(d1Q[0]) < sizeof(d2Q)/sizeof(d2Q[0])){ 
+    // add to the smaller disk queue
+    } else if (d1Size < d2Size){ 
         enqueue(2, oldEvent.id);
-    // add to disk2 queue
     } else { 
         enqueue(3, oldEvent.id);
     }
@@ -448,7 +478,7 @@ void handle_process_finish_disk1(struct event oldEvent) {
     printf("\ntime %d: process %d exits disk 1", oldEvent.time, oldEvent.id);
 
     // if the cpu is busy or if the cpu queue is nonempty
-    if(cpuBusy == 1 || cpuQ[cpuFront] != 0){
+    if(cpuBusy == 1 || cpuSize > 0){
         printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
     // cpu is not occupied AND queue is empty
@@ -462,7 +492,7 @@ void handle_process_finish_disk1(struct event oldEvent) {
     }
 
     // if disk queue is nonempty
-    if(d1Q[d1Front] != 0) {
+    if(d1Size > 0) {
         int newID = dequeue(2); // pull process off disk1 queue
         struct event newEvent;
         newEvent.time = oldEvent.time;
@@ -479,7 +509,7 @@ void handle_process_finish_disk2(struct event oldEvent) {
     printf("\ntime %d: process %d exits disk 2", oldEvent.time, oldEvent.id);
 
     // if the cpu is busy or if the cpu queue is nonempty
-    if(cpuBusy == 1 || cpuQ[cpuFront] != 0){
+    if(cpuBusy == 1 || cpuSize > 0){
         printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
     // cpu is not occupied AND queue is empty
@@ -493,7 +523,7 @@ void handle_process_finish_disk2(struct event oldEvent) {
     }
 
     // if disk queue is nonempty
-    if(d2Q[d2Front] != 0) {
+    if(d2Size > 0) {
         int newID = dequeue(3); // pull process off disk2 queue
         struct event newEvent;
         newEvent.time = oldEvent.time;
@@ -520,7 +550,7 @@ void handle_process_finish_network(struct event oldEvent) {
     printf("\ntime %d: process %d exits the network", oldEvent.time, oldEvent.id);
 
     // if the cpu is busy or if the cpu queue is nonempty
-    if(cpuBusy == 1 || cpuQ[cpuFront] != 0){
+    if(cpuBusy == 1 || cpuSize > 0){
         printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
     // cpu is not occupied AND queue is empty
@@ -534,7 +564,7 @@ void handle_process_finish_network(struct event oldEvent) {
     }
 
     // if network queue is nonempty
-    if(netQ[netFront] != 0) {
+    if(netSize > 0) {
         int newID = dequeue(4); // pull process off network queue
         struct event newEvent;
         newEvent.time = oldEvent.time;
@@ -543,6 +573,11 @@ void handle_process_finish_network(struct event oldEvent) {
         netBusy = 1; // set network to occupied
         pEnqueue(newEvent);
     }
+}
+
+// ends the simulation
+void handle_process_finish(struct event oldEvent) {
+    
 }
 
 
