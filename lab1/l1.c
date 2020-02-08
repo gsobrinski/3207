@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define MAX 10 // size of queues
+#define MAX 1000 // size of queues
 
 // event types
 enum event_type {
@@ -95,13 +95,65 @@ int main() {
     first.id = processID();
     last.time = FIN_TIME;
     last.type = PROCESS_FINISH;
-    last.id = processID();
+    last.id = 0;
     pEnqueue(first);
     pEnqueue(last);
 
     bool running = true;
+    struct event e;
+
 
     while(running = true) {
+
+        e = pDequeue();
+
+        switch(e.type) {
+            case PROCESS_ARRIVAL: 
+                handle_process_arrival(e);
+                break;
+            
+            case PROCESS_ARRIVE_CPU:
+                handle_process_arrive_cpu(e);
+                break;
+            
+            case PROCESS_FINISH_CPU:
+                handle_process_finish_cpu(e);
+                break;
+
+            case PROCESS_EXIT_SYSTEM:
+                handle_process_exit_system(e);
+                break;
+
+            case PROCESS_ARRIVE_DISK1:
+                handle_process_arrive_disk1(e);
+                break;
+
+            case PROCESS_ARRIVE_DISK2:
+                handle_process_arrive_disk2(e);
+                break;
+            
+            case PROCESS_FINISH_DISK1:
+                handle_process_finish_disk1(e);
+                break;
+            
+            case PROCESS_FINISH_DISK2:
+                handle_process_finish_disk2(e);
+                break;
+            
+            case PROCESS_ARRIVE_NETWORK:
+                handle_process_arrive_network(e);
+                break;
+
+            case PROCESS_FINISH_NETWORK:
+                handle_process_finish_network(e);
+                break;
+
+            case PROCESS_FINISH:
+                handle_process_finish(e);
+                running = false;
+                exit(0);
+                break;
+        }
 
     }
 
@@ -236,6 +288,8 @@ int dequeue(int n) {
             cpuFront++;
         }
 
+        cpuSize--;
+
     } else if (n == 2) {
         if(d1Front == -1) {
             printf("\nqueue is empty\n");
@@ -247,6 +301,8 @@ int dequeue(int n) {
             a = d1Q[d1Front];
             d1Front++;
         }
+
+        d1Size--;
 
     } else if (n == 3) {
         if(d2Front == -1) {
@@ -260,6 +316,8 @@ int dequeue(int n) {
             d2Front++;
         }
 
+        d2Size--;
+
     } else if (n == 4) {
         if(netFront == -1) {
             printf("\nqueue is empty\n");
@@ -271,6 +329,8 @@ int dequeue(int n) {
             a = netQ[netFront];
             netFront++;
         }
+
+        netSize--;
 
     }
 
@@ -307,8 +367,13 @@ void pEnqueue(struct event newEvent) {
 
     }
 
+
     // sort the priority queue
     pqSort();
+
+    // printf("\n\n");
+    // pDisplay();
+    // printf("\n");
 
 }
 
@@ -334,12 +399,15 @@ struct event pDequeue() {
 // sorts the priority queue by time
 void pqSort() {
 
+    struct event temp;
+
     for(size_t i = pFront; i <= pRear; i++) {
-        for(size_t j = pFront; j <= pRear-i; j++) {
+        for(size_t j = pFront; j < pRear; j++) {
             if(pq[j].time > pq[j+1].time) {
-                struct event temp = pq[j];
+                temp = pq[j];
                 pq[j] = pq[j+1];
                 pq[j+1] = temp;
+
             }
         }
     }
@@ -349,6 +417,8 @@ void pqSort() {
 
 // displays the priority queue
 void pDisplay() {
+
+    printf("\npriority queue:");
     if(pRear == -1) {
         printf("\nqueue is empty\n");
     }
@@ -362,13 +432,15 @@ void pDisplay() {
 // EVENT HANDLERS:
 
 void handle_process_arrival(struct event oldEvent) {
+
+    printf("\ntime %d: process %d arrives to the system", oldEvent.time, oldEvent.id);
+
     // if the cpu is busy or if the cpu queue is nonempty, add to CPU queue
     if(cpuBusy == 1 || cpuSize > 0){
         printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
     // if cpu is not occupied AND queue is empty, create new event
     } else { 
-        printf("\ntime %d: process %d arrives to the system", oldEvent.time, oldEvent.id);
         struct event newEvent;
         newEvent.time = oldEvent.time;
         newEvent.type = PROCESS_ARRIVE_CPU;
@@ -382,13 +454,12 @@ void handle_process_arrival(struct event oldEvent) {
     newEvent.time = oldEvent.time + randNum(ARRIVE_MIN, ARRIVE_MAX);
     newEvent.type = PROCESS_ARRIVAL;
     newEvent.id = processID();
-    printf("\ntime %d: process %d arrives to the system", newEvent.time, newEvent.id);
     pEnqueue(newEvent);
 
 }
 
 void handle_process_arrive_cpu(struct event oldEvent) {
-    printf("\ntime %d: process %d arrives to the CPU", oldEvent.time, oldEvent.id);
+    printf("\ntime %d: process %d enters the CPU", oldEvent.time, oldEvent.id);
     struct event newEvent;
     newEvent.time = oldEvent.time + randNum(CPU_MIN, CPU_MAX);
     newEvent.type = PROCESS_FINISH_CPU;
@@ -440,12 +511,22 @@ void handle_process_finish_cpu(struct event oldEvent) {
         pEnqueue(newEvent);
 
     // add to the smaller disk queue
-    } else if (d1Size < d2Size){ 
+    } else if (d1Size <= d2Size){ 
         enqueue(2, oldEvent.id);
     } else { 
         enqueue(3, oldEvent.id);
     }
 
+    // if CPU queue is nonempty, create process_arrive_cpu event
+    if(cpuSize > 0) {
+        int newID = dequeue(1); // pull process off cpu queue
+        struct event newEvent;
+        newEvent.time = oldEvent.time;
+        newEvent.type = PROCESS_ARRIVE_CPU;
+        newEvent.id = newID;
+        cpuBusy = 1; // set cpu to occupied
+        pEnqueue(newEvent);
+    }
 
 }
 
@@ -455,7 +536,7 @@ void handle_process_exit_system(struct event oldEvent) {
 }
 
 void handle_process_arrive_disk1(struct event oldEvent) {
-    printf("\ntime %d: process %d arrives to disk 1", oldEvent.time, oldEvent.id);
+    printf("\ntime %d: process %d enters disk 1", oldEvent.time, oldEvent.id);
     struct event newEvent;
     newEvent.time = oldEvent.time + randNum(DISK1_MIN, DISK1_MAX);
     newEvent.type = PROCESS_FINISH_DISK1;
@@ -464,7 +545,7 @@ void handle_process_arrive_disk1(struct event oldEvent) {
 }
 
 void handle_process_arrive_disk2(struct event oldEvent) {
-    printf("\ntime %d: process %d arrives to disk 2", oldEvent.time, oldEvent.id);
+    printf("\ntime %d: process %d enters disk 2", oldEvent.time, oldEvent.id);
     struct event newEvent;
     newEvent.time = oldEvent.time + randNum(DISK2_MIN, DISK2_MAX);
     newEvent.type = PROCESS_FINISH_DISK2;
@@ -535,7 +616,7 @@ void handle_process_finish_disk2(struct event oldEvent) {
 }
 
 void handle_process_arrive_network(struct event oldEvent) {
-    printf("\ntime %d: process %d arrives to the network", oldEvent.time, oldEvent.id);
+    printf("\ntime %d: process %d enters the network", oldEvent.time, oldEvent.id);
     struct event newEvent;
     newEvent.time = oldEvent.time + randNum(NETWORK_MIN, NETWORK_MAX);
     newEvent.type = PROCESS_FINISH_NETWORK;
@@ -577,7 +658,8 @@ void handle_process_finish_network(struct event oldEvent) {
 
 // ends the simulation
 void handle_process_finish(struct event oldEvent) {
-    
+    printf("\nsimulation finished\n");
+    exit(0);
 }
 
 
