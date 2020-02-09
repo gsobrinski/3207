@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define MAX 1000 // size of queues
+#define MAX 10000 // size of queues
 
 // event types
 enum event_type {
@@ -74,17 +74,32 @@ int d1Q[MAX], d1Front = -1, d1Rear = -1, d1Size = 0; // disk 1 queue (2)
 int d2Q[MAX], d2Front = -1, d2Rear = -1, d2Size = 0; // disk 2 queue (3)
 int netQ[MAX], netFront = -1, netRear = -1, netSize = 0;; // network queue (4)
 
+// STATS file 
+
+double cpuAvg, cpuUtil, cpuCount, cpuResponse, cpuThroughput;
+double d1Avg, d1Util, d1Count, d1Response, d1Throughput;
+double d2Avg, d2Util, d2Count, d2Response, d2Throughput;
+double netAvg, netUtil, netCount, netResponse, netThroughput;
+int cpuMax = 0, d1Max = 0, d2Max = 0, netMax = 0;
+int cpuTotal, d1Total, d2Total, netTotal;
+int cpuMaxResponse = 0, d1MaxResponse = 0, d2MaxResponse = 0, netMaxResponse = 0;
+
 // priority queue
 struct event pq[MAX];
 int pFront = -1, pRear = -1; 
 
+FILE *logFile, *statsFile;
+
 
 int main() {
 
+    logFile = fopen("log.c", "w+");
+    statsFile = fopen("stats.c", "w+");
+
     read_config();
 
-    //printf("\nSEED: %d\nINIT_TIME: %d\nFIN_TIME: %d\nARRIVE_MIN %d\nARRIVE_MAX %d\nQUIT_PROB %d\nNETWORK_PROB %d\nCPU_MIN %d\nCPU_MAX %d\nDISK1_MIN %d\nDISK1_MAX %d\nDISK2_MIN %d\nDISK2_MAX %d\nNETWORK_MIN %d\nNETWORK_MAX %d\n",  
-    //SEED, INIT_TIME, FIN_TIME, ARRIVE_MIN, ARRIVE_MAX, QUIT_PROB, NETWORK_PROB, CPU_MIN, CPU_MAX, DISK1_MIN, DISK1_MAX, DISK2_MIN, DISK2_MAX, NETWORK_MIN, NETWORK_MAX);
+    fprintf(logFile, "\nSEED: %d\nINIT_TIME: %d\nFIN_TIME: %d\nARRIVE_MIN %d\nARRIVE_MAX %d\nQUIT_PROB %d\nNETWORK_PROB %d\nCPU_MIN %d\nCPU_MAX %d\nDISK1_MIN %d\nDISK1_MAX %d\nDISK2_MIN %d\nDISK2_MAX %d\nNETWORK_MIN %d\nNETWORK_MAX %d\n",  
+    SEED, INIT_TIME, FIN_TIME, ARRIVE_MIN, ARRIVE_MAX, QUIT_PROB, NETWORK_PROB, CPU_MIN, CPU_MAX, DISK1_MIN, DISK1_MAX, DISK2_MIN, DISK2_MAX, NETWORK_MIN, NETWORK_MAX);
 
     srand(SEED);
 
@@ -150,6 +165,7 @@ int main() {
 
             case PROCESS_FINISH:
                 handle_process_finish(e);
+                fclose(logFile);
                 running = false;
                 exit(0);
                 break;
@@ -222,6 +238,13 @@ void enqueue(int n, int ID) {
 
         cpuSize++;
 
+        // stats file
+        cpuAvg += cpuSize;
+        cpuTotal++;
+        if(cpuSize > cpuMax) {
+            cpuMax = cpuSize;
+        }
+
     } else if (n == 2) {
         if(d1Rear == -1) {
             d1Front = d1Rear = 0;
@@ -236,6 +259,13 @@ void enqueue(int n, int ID) {
         }
 
         d1Size++;
+
+        // stats file
+        d1Avg += d1Size;
+        d1Total++;
+        if(d1Size > d1Max) {
+            d1Max = d1Size;
+        }
 
     } else if (n == 3) {
         if(d2Rear == -1) {
@@ -252,6 +282,13 @@ void enqueue(int n, int ID) {
 
         d2Size++;
 
+        //stats file
+        d2Avg += d2Size;
+        d2Total++;
+        if(d2Size > d2Max) {
+            d2Max = d2Size;
+        }
+
     } else if (n == 4) {
         if(netRear == -1) {
             netFront = netRear = 0;
@@ -266,6 +303,13 @@ void enqueue(int n, int ID) {
         }
 
         netSize++;
+
+        // stats file
+        netAvg += netSize;
+        netTotal++;
+        if(netSize > netMax) {
+            netMax = netSize;
+        }
 
     }
 
@@ -290,6 +334,10 @@ int dequeue(int n) {
 
         cpuSize--;
 
+        // stats file
+        cpuAvg += cpuSize;
+        cpuTotal++;
+
     } else if (n == 2) {
         if(d1Front == -1) {
             printf("\nqueue is empty\n");
@@ -303,6 +351,10 @@ int dequeue(int n) {
         }
 
         d1Size--;
+
+        // stats file
+        d1Avg += d1Size;
+        d1Total++;
 
     } else if (n == 3) {
         if(d2Front == -1) {
@@ -318,6 +370,10 @@ int dequeue(int n) {
 
         d2Size--;
 
+        //stats file
+        d2Avg += d2Size;
+        d2Total++;
+
     } else if (n == 4) {
         if(netFront == -1) {
             printf("\nqueue is empty\n");
@@ -331,6 +387,10 @@ int dequeue(int n) {
         }
 
         netSize--;
+
+        // stats file
+        netAvg += netSize;
+        netTotal++;
 
     }
 
@@ -370,10 +430,6 @@ void pEnqueue(struct event newEvent) {
 
     // sort the priority queue
     pqSort();
-
-    // printf("\n\n");
-    // pDisplay();
-    // printf("\n");
 
 }
 
@@ -433,11 +489,11 @@ void pDisplay() {
 
 void handle_process_arrival(struct event oldEvent) {
 
-    printf("\ntime %d: process %d arrives to the system", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d arrives to the system", oldEvent.time, oldEvent.id);
 
     // if the cpu is busy or if the cpu queue is nonempty, add to CPU queue
     if(cpuBusy == 1 || cpuSize > 0){
-        printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
+        fprintf(logFile, "\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
     // if cpu is not occupied AND queue is empty, create new event
     } else { 
@@ -459,9 +515,18 @@ void handle_process_arrival(struct event oldEvent) {
 }
 
 void handle_process_arrive_cpu(struct event oldEvent) {
-    printf("\ntime %d: process %d enters the CPU", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d enters the CPU", oldEvent.time, oldEvent.id);
     struct event newEvent;
-    newEvent.time = oldEvent.time + randNum(CPU_MIN, CPU_MAX);
+    int num = randNum(CPU_MIN, CPU_MAX);
+
+    // stats file
+    cpuUtil += num;
+    cpuCount++;
+    if (num > cpuMaxResponse) {
+        cpuMaxResponse = num;
+    }
+
+    newEvent.time = oldEvent.time + num;
     newEvent.type = PROCESS_FINISH_CPU;
     newEvent.id = oldEvent.id;
     pEnqueue(newEvent);
@@ -471,7 +536,7 @@ void handle_process_finish_cpu(struct event oldEvent) {
     cpuBusy = 0;
     int num = randNum(1, 100);
 
-    printf("\ntime %d: process %d exits the CPU", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d exits the CPU", oldEvent.time, oldEvent.id);
 
     // process exits the system
     if (num < QUIT_PROB) {
@@ -531,23 +596,40 @@ void handle_process_finish_cpu(struct event oldEvent) {
 }
 
 void handle_process_exit_system(struct event oldEvent) {
-    printf("\ntime %d: process %d exits the system", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d exits the system", oldEvent.time, oldEvent.id);
 
 }
 
 void handle_process_arrive_disk1(struct event oldEvent) {
-    printf("\ntime %d: process %d enters disk 1", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d enters disk 1", oldEvent.time, oldEvent.id);
     struct event newEvent;
-    newEvent.time = oldEvent.time + randNum(DISK1_MIN, DISK1_MAX);
+    int num = randNum(DISK1_MIN, DISK1_MAX);
+
+    // stats file
+    d1Util += num;
+    d1Count++;
+    if (num > d1MaxResponse) {
+        d1MaxResponse = num;
+    }
+
+    newEvent.time = oldEvent.time + num;
     newEvent.type = PROCESS_FINISH_DISK1;
     newEvent.id = oldEvent.id;
     pEnqueue(newEvent);
 }
 
 void handle_process_arrive_disk2(struct event oldEvent) {
-    printf("\ntime %d: process %d enters disk 2", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d enters disk 2", oldEvent.time, oldEvent.id);
     struct event newEvent;
-    newEvent.time = oldEvent.time + randNum(DISK2_MIN, DISK2_MAX);
+    int num = randNum(DISK2_MIN, DISK2_MAX);
+
+    d2Util += num;
+    d2Count++;
+    if (num > d2MaxResponse) {
+        d2MaxResponse = num;
+    }
+    
+    newEvent.time = oldEvent.time + num;
     newEvent.type = PROCESS_FINISH_DISK2;
     newEvent.id = oldEvent.id;
     pEnqueue(newEvent);
@@ -556,11 +638,11 @@ void handle_process_arrive_disk2(struct event oldEvent) {
 void handle_process_finish_disk1(struct event oldEvent) {
 
     d1Busy = 0; // set disk to not occupied
-    printf("\ntime %d: process %d exits disk 1", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d exits disk 1", oldEvent.time, oldEvent.id);
 
     // if the cpu is busy or if the cpu queue is nonempty
     if(cpuBusy == 1 || cpuSize > 0){
-        printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
+        fprintf(logFile, "\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
     // cpu is not occupied AND queue is empty
     } else { 
@@ -587,11 +669,11 @@ void handle_process_finish_disk1(struct event oldEvent) {
 void handle_process_finish_disk2(struct event oldEvent) {
 
     d2Busy = 0; // set disk to not occupied
-    printf("\ntime %d: process %d exits disk 2", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d exits disk 2", oldEvent.time, oldEvent.id);
 
     // if the cpu is busy or if the cpu queue is nonempty
     if(cpuBusy == 1 || cpuSize > 0){
-        printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
+        fprintf(logFile, "\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
     // cpu is not occupied AND queue is empty
     } else { 
@@ -616,9 +698,17 @@ void handle_process_finish_disk2(struct event oldEvent) {
 }
 
 void handle_process_arrive_network(struct event oldEvent) {
-    printf("\ntime %d: process %d enters the network", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d enters the network", oldEvent.time, oldEvent.id);
     struct event newEvent;
-    newEvent.time = oldEvent.time + randNum(NETWORK_MIN, NETWORK_MAX);
+    int num = randNum(NETWORK_MIN, NETWORK_MAX);
+
+    netUtil += num;
+    netCount++;
+    if (num > netMaxResponse) {
+        netMaxResponse = num;
+    }
+
+    newEvent.time = oldEvent.time + num;
     newEvent.type = PROCESS_FINISH_NETWORK;
     newEvent.id = oldEvent.id;
     pEnqueue(newEvent);
@@ -628,11 +718,11 @@ void handle_process_arrive_network(struct event oldEvent) {
 void handle_process_finish_network(struct event oldEvent) {
 
     netBusy = 0; // set network to not occupied
-    printf("\ntime %d: process %d exits the network", oldEvent.time, oldEvent.id);
+    fprintf(logFile, "\ntime %d: process %d exits the network", oldEvent.time, oldEvent.id);
 
     // if the cpu is busy or if the cpu queue is nonempty
     if(cpuBusy == 1 || cpuSize > 0){
-        printf("\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
+        fprintf(logFile, "\ntime %d: process %d enters the CPU queue", oldEvent.time, oldEvent.id);
         enqueue(1, oldEvent.id);
     // cpu is not occupied AND queue is empty
     } else { 
@@ -658,10 +748,34 @@ void handle_process_finish_network(struct event oldEvent) {
 
 // ends the simulation
 void handle_process_finish(struct event oldEvent) {
-    printf("\nsimulation finished\n");
+
+    cpuAvg = cpuAvg/cpuTotal;
+    d1Avg = d1Avg/d1Total;
+    d2Avg = d2Avg/d2Total;
+    netAvg = netAvg/netTotal;
+
+    cpuResponse = cpuUtil/cpuCount;
+    d1Response = d1Util/d1Count;
+    d2Response = d2Util/d2Count;
+    netResponse = netUtil/netCount;
+
+    cpuUtil = cpuUtil/(FIN_TIME - INIT_TIME);
+    d1Util = d1Util/(FIN_TIME - INIT_TIME);
+    d2Util = d2Util/(FIN_TIME - INIT_TIME);
+    netUtil = netUtil/(FIN_TIME - INIT_TIME);
+
+    cpuThroughput = cpuCount/(FIN_TIME - INIT_TIME);
+    d1Throughput = d1Count/(FIN_TIME - INIT_TIME);
+    d2Throughput = d2Count/(FIN_TIME - INIT_TIME);
+    netThroughput = netCount/(FIN_TIME - INIT_TIME);
+
+    fprintf(statsFile, "\nAverage Queue Size:\nCPU = %f\nDisk 1 = %f\nDisk 2 = %f\nNetwork = %f\n", cpuAvg, d1Avg, d2Avg, netAvg);
+    fprintf(statsFile, "\nMaximum Queue Size:\nCPU = %d\nDisk 1 = %d\nDisk 2 = %d\nNetwork = %d\n", cpuMax, d1Max, d2Max, netMax);
+    fprintf(statsFile, "\nUtilization:\nCPU = %f\nDisk 1 = %f\nDisk 2 = %f\nNetwork - %f\n", cpuUtil, d1Util, d2Util, netUtil);
+    fprintf(statsFile, "\nAverage Response Time:\nCPU = %f\nDisk 1 = %f\nDisk 2 = %f\nNetwork = %f\n", cpuResponse, d1Response, d2Response, netResponse);
+    fprintf(statsFile, "\nMaximum Response Time:\nCPU = %d\nDisk 1 = %d\nDisk 2 = %d\nNetwork = %d\n", cpuMaxResponse, d1MaxResponse, d2MaxResponse, netMaxResponse);
+    fprintf(statsFile, "\nThroughput:\nCPU = %f\nDisk 1 = %f\nDisk 2 = %f\nNetwork = %f\n", cpuThroughput, d1Throughput, d2Throughput, netThroughput);
+    
+    fprintf(logFile, "\nsimulation finished\n");
     exit(0);
 }
-
-
-
-
