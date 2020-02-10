@@ -166,6 +166,7 @@ int main() {
             case PROCESS_FINISH:
                 handle_process_finish(e);
                 fclose(logFile);
+                fclose(statsFile);
                 running = false;
                 exit(0);
                 break;
@@ -777,5 +778,5 @@ void handle_process_finish(struct event oldEvent) {
     fprintf(statsFile, "\nThroughput:\nCPU = %f\nDisk 1 = %f\nDisk 2 = %f\nNetwork = %f\n", cpuThroughput, d1Throughput, d2Throughput, netThroughput);
     
     fprintf(logFile, "\nsimulation finished\n");
-    exit(0);
+
 }
