@@ -1,36 +1,36 @@
 
 Average Queue Size:
-CPU = 249.627830
-Disk 1 = 69.431649
-Disk 2 = 68.979941
-Network = 0.689655
+CPU = 462.589444
+Disk 1 = 28.335274
+Disk 2 = 28.074854
+Network = 0.750000
 
 Maximum Queue Size:
-CPU = 486
-Disk 1 = 157
-Disk 2 = 156
+CPU = 946
+Disk 1 = 58
+Disk 2 = 57
 Network = 2
 
 Utilization:
-CPU = 0.999533
-Disk 1 = 1.000000
-Disk 2 = 0.998800
-Network - 0.483333
+CPU = 1.000000
+Disk 1 = 0.999600
+Disk 2 = 0.998600
+Network - 0.555800
 
 Average Response Time:
-CPU = 7.448087
-Disk 1 = 25.125628
-Disk 2 = 25.095477
-Network = 73.232323
+CPU = 7.530120
+Disk 1 = 24.865672
+Disk 2 = 24.965000
+Network = 40.569343
 
 Maximum Response Time:
 CPU = 10
 Disk 1 = 30
 Disk 2 = 30
-Network = 100
+Network = 50
 
 Throughput:
-CPU = 0.134200
-Disk 1 = 0.039800
-Disk 2 = 0.039800
-Network = 0.006600
+CPU = 0.132800
+Disk 1 = 0.040200
+Disk 2 = 0.040000
+Network = 0.013700
