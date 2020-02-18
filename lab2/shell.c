@@ -1,48 +1,60 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#define SIZE 20
+#include <stdbool.h>
+#define MAX 100
 
-void tokenize(char line[]);
-void tokenDisplay();
-
-char *tokens[SIZE];
+int getInput(char* line);
+int parse(char* line, char** tokens);
 
 int main() {
 
-    char line[50];
-    char end[] = "stop";
+    bool running = true;
     
-    while(strcmp(line, end) != 0) {
+    while(running == true) {
 
-        scanf("%s", line);
+        char *tokens[MAX];
+        char line[MAX];
 
-        if(strcmp(line, end) == 0) {
-            break;
-        } else{   
-            tokenize(line);
+        int result = getInput(line);
+
+        if(result == 0) {
+            printf("\nno input was given\n");
+        } else {
+            int cmdType = parse(line, tokens);
         }
+    }
+
+}
+
+// gets the command line from user input
+int getInput(char* line) {
+    //printShell(); // print the shell info
+
+    fgets(line, MAX, stdin); 
+
+    if(strlen(line) == 0) { // if no input was entered
+        return 0;
+    } else {
+        return 1;
     }
 }
 
-void tokenize(char line[]) {
-    char *token;
-    token = strtok(line, " ");
-    int count = 0;
+int parse(char* line, char** tokens) {
+
+    char *token = strtok(line, " ");
+    int i = 0;
 
     while(token != NULL) {
-        tokens[count] = token;
-        count++;
+        tokens[i] = token;
+        i++;
 
         token = strtok(NULL, " ");
     }
 
-    tokenDisplay();
+    return 1;
 
 }
 
-void tokenDisplay() {
-    for(size_t i = 0; tokens[i] != NULL; i++) {
-        printf("%s ", tokens[i]);
-    }
-}
+
+
