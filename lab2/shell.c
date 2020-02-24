@@ -112,7 +112,9 @@ int tokenize(char* line, char** tokens) {
         i++;
 
         token = strtok(NULL, " \t\n");
-    }
+    } 
+
+    tokens[i] = NULL;
 
     return 1;
 
@@ -213,22 +215,22 @@ int execute_dir(char *directory) {
 
     char *dirName;
     //if no directory is given use current directory - call get_current_dir_name() (make sure to free after)
-    // if(strcmp(directory, "cwd") == 0) { // if no directory was specified, use cwd
-    //     dirName =(char *)get_current_dir_name();
-    // } 
+    if(strcmp(directory, "cwd") == 0) { // if no directory was specified, use cwd
+         dirName =(char *)get_current_dir_name();
+    } 
 
     DIR *dir = opendir(dirName); // error-check this 
 
     // check for error
     if(dir == NULL) {
-            perror("cannot open");
-            exit(1);
+        perror("cannot open");
+        exit(1);
     }
 
     struct dirent *s; // directory entry 
     while( (s = readdir(dir)) != NULL){ // get contents 
-    printf("%s\t", s->d_name); // print name of dirent 
-}
+        printf("%s\t", s->d_name); // print name of dirent 
+    }
 }
 
 // print environment variables, returns 1 if successful
@@ -275,7 +277,6 @@ void execute_help() {
 // execute commands with no I/O redirection, returns 0 if error occurs
 int execute_command(char **tokens) {
 
-    printf("%s %s", tokens[0], tokens[1]);    
     int pid;
 
     if ((pid = fork()) < 0) {  
