@@ -22,10 +22,10 @@ struct exec_context {
 	bool contains_pipe;
 	bool background_execution;
 	
-	char input_file[50];
-	char output_file[50];
-	char pipe_command_1[50];
-	char pipe_command_2[50];
+	char *input_file;
+	char *output_file;
+	char *pipe_command_1;
+	char *pipe_command_2;
 	
 };
 
@@ -35,22 +35,22 @@ int tokenize(char* line, char** tokens);
 void printShell();
 int parse(char **tokens, struct exec_context ec);
 int is_built_in(char *token);
+struct exec_context is_io(char **tokens, struct exec_context ec);
+void print_exec_context(struct exec_context ec);
+
+// executing commands
+int execute_command(char **tokens);
 int execute_built_in(char **tokens);
 
 //built in commands:
 int execute_cd(char *directory);
-int execute_dir(char *directory);
+int execute_dir(char **tokens);
 int execute_environ();
 void execute_clr();
 void execute_pause();
 void execute_echo(char **tokens);
 void execute_quit();
 void execute_help();
-
-int execute_command(char **tokens);
-
-
-
 
 int main() {
 
@@ -61,10 +61,7 @@ int main() {
         // initialize line and tokens array
         char line[max_length];
 
-        char **tokens = malloc(max_size * sizeof(char *));   
-        for (size_t i = 0; i < max_size; ++i) {
-            tokens[i] = (char *)malloc(max_length);
-        }        
+        char **tokens = calloc(max_size, sizeof(char *));        
         
         // initizalize execution context struct
         struct exec_context ec;
@@ -85,6 +82,8 @@ int main() {
             tokenize(line, tokens);
             parse(tokens, ec);
         }
+
+        free(tokens);
     }
 
 }
@@ -131,10 +130,18 @@ void printShell() {
 // returns 0 if error
 int parse(char **tokens, struct exec_context ec) {
 
-    if(is_built_in(tokens[0])) {
+    ec = is_io(tokens, ec);
+
+    //print_exec_context(ec);
+
+    if(ec.contains_io == false) {
+        if(is_built_in(tokens[0])) {
         execute_built_in(tokens);
+        } else {
+            execute_command(tokens);
+        }
     } else {
-        execute_command(tokens);
+        printf("\nthis contains redirection");
     }
 
 }
@@ -165,17 +172,96 @@ int is_built_in(char *token) {
 
 }
 
+//returns a struct of the execution context
+struct exec_context is_io(char **tokens, struct exec_context ec) {
+	
+	for(size_t i = 0; tokens[i] != NULL; i++) {
+		
+        // if there is input redirection
+		if (strcmp(tokens[i], "<") == 0) {
+			if (i == 0) { // if this is the first token there is an error
+				ec.contains_error = true;
+				return ec;
+            }
+
+            ec.contains_io = true;
+            ec.input_redirection = true;
+            ec.input_file = tokens[i+1];
+        }
+
+        // if there is output redirection
+        if (strcmp(tokens[i], ">") == 0) {
+            if (i == 0) { // if this is the first token there is an error
+                ec.contains_error = true;
+                return ec;
+            }
+
+            ec.contains_io = true;
+            ec.output_redirection = true;
+            ec.output_file = tokens[i+1];
+        }
+        
+        // if there is appending output redirection
+        if (strcmp(tokens[i], ">>") == 0) { 
+            if (i == 0 ) { // if this is the first token there is an error
+                ec.contains_error = true;
+                return ec;
+            }
+
+            ec.contains_io = true;
+            ec.output_redirection_append = true;
+            ec.output_file = tokens[i+1];
+
+        }
+
+        if (strcmp(tokens[i], "|") == 0) {
+            // check for errors: pipe must have a command on either side
+            if (i == 0) {
+                ec.contains_error = true;
+                return ec;
+            }
+            if (tokens[i+1]  == NULL) {
+                ec.contains_error = true;
+                return ec;
+            }
+
+            ec.contains_io = true;
+            ec.contains_pipe = true;
+            ec.pipe_command_1 = tokens[i-1];
+            ec.pipe_command_2 = tokens[i+1];
+        }
+
+        if (strcmp(tokens[i], "&") == 0) {
+            if (tokens[i+1] == NULL) {
+                ec.contains_error = true;
+                return ec;
+            }
+
+            ec.contains_io = true;
+            ec.background_execution = true;
+        }
+
+    } // end for loop
+    return ec;
+}
+
+void print_exec_context(struct exec_context ec) {
+
+    printf("ec.contains_io: %d\nec.contains_error: %d\nec.input_redirection: %d\nec.output_redirection: %d\nec.output_redirection_append: %d\nec.contains_pipe: %d\nec.background_execution: %d\n", ec.contains_io, ec.contains_error, ec.input_redirection, ec.output_redirection, ec.output_redirection_append, ec.contains_pipe, ec.background_execution);
+	
+	printf("input_file: %s\noutput_file: %s\npipe_command_1: %s\npipe_command_2: %s\n", ec.input_file, ec.output_file, ec.pipe_command_1, ec.pipe_command_2);
+
+
+}
+
+
 int execute_built_in(char **tokens) {
 
     if(strcmp(tokens[0], "cd") == 0) {
         execute_cd(tokens[1]); // pass the argument as the new directory
 
     } else if(strcmp(tokens[0], "dir") == 0) {
-        if (tokens[1] != NULL) { // if the user specified a directory use that argument
-            execute_dir(tokens[1]);
-        } else {
-            execute_dir("cwd"); // else use cwd
-        }
+        execute_dir(tokens);
 
     } else if(strcmp(tokens[0], "environ") == 0) {
         execute_environ();
@@ -208,23 +294,31 @@ int execute_cd(char *directory) {
 }
 
 //accepts new directory as parameter, returns 1 if successful
-int execute_dir(char *directory) {
+int execute_dir(char **tokens) {
 
 	// include additional if statements for output redirection
 	// make sure to check for errors
 
-    char *dirName;
-    //if no directory is given use current directory - call get_current_dir_name() (make sure to free after)
-    if(strcmp(directory, "cwd") == 0) { // if no directory was specified, use cwd
-         dirName =(char *)get_current_dir_name();
-    } 
+    char *dirName = NULL;
+    //if no directory is given use current directory (make sure to free after)
+    if(tokens[1] == NULL) { // if no directory was specified, use cwd
+         dirName = getcwd(dirName, 0);
+         printf("\n%s", dirName);
+         fflush(stdout);
+    } else {
+        dirName = tokens[1];
+    }
+
+    // check for error
+    if(dirName == NULL) {
+        return 0;
+    }
 
     DIR *dir = opendir(dirName); // error-check this 
 
     // check for error
     if(dir == NULL) {
-        perror("cannot open");
-        exit(1);
+        return 0;
     }
 
     struct dirent *s; // directory entry 
