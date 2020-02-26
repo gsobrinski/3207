@@ -2,10 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <assert.h>
 #include <unistd.h> 
 #include <fcntl.h>
 #include <sys/wait.h> 
+#include <sys/types.h>
 #include <dirent.h>
+#include <sys/stat.h>
 
 #define max_size 10
 #define max_length 100
@@ -29,7 +32,6 @@ struct exec_context {
 	
 };
 
-
 int getInput(char* line);
 int tokenize(char* line, char** tokens);
 void printShell();
@@ -38,11 +40,12 @@ int is_built_in(char *token);
 struct exec_context is_io(char **tokens, struct exec_context ec);
 void print_exec_context(struct exec_context ec);
 
-// executing commands
+// executing commands:
 int execute_command(char **tokens);
 int execute_built_in(char **tokens);
+int execute_IO(char **tokens, struct exec_context ec);
 
-//built in commands:
+// built in commands:
 int execute_cd(char *directory);
 int execute_dir(char **tokens);
 int execute_environ();
@@ -51,6 +54,14 @@ void execute_pause();
 void execute_echo(char **tokens);
 void execute_quit();
 void execute_help();
+
+// I/O redirection commands:
+int execute_output_redirection(char **tokens, struct exec_context ec);
+int execute_input_redirection(char **tokens, struct exec_context ec);
+int execute_input_output_redirection(char **tokens, struct exec_context ec);
+int execute_background_execution(char **tokens, struct exec_context ec);
+int execute_pipe(char **tokens, struct exec_context ec);
+
 
 int main() {
 
@@ -79,7 +90,7 @@ int main() {
         if(result == 0) {
             printf("\nno input was given\n");
         } else {
-            tokenize(line, tokens);
+            tokenize(line, tokens); 
             parse(tokens, ec);
         }
 
@@ -134,14 +145,20 @@ int parse(char **tokens, struct exec_context ec) {
 
     //print_exec_context(ec);
 
-    if(ec.contains_io == false) {
+    // if there is redirection
+    if(ec.contains_io == true) {
+        execute_IO(tokens, ec);
+        return 1;
+    
+    // if there is no redirection, this is either a built in or a regular command
+    } else {
         if(is_built_in(tokens[0])) {
-        execute_built_in(tokens);
+            execute_built_in(tokens);
+            return 1;
         } else {
             execute_command(tokens);
+            return 1;
         }
-    } else {
-        printf("\nthis contains redirection");
     }
 
 }
@@ -232,11 +249,6 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         }
 
         if (strcmp(tokens[i], "&") == 0) {
-            if (tokens[i+1] == NULL) {
-                ec.contains_error = true;
-                return ec;
-            }
-
             ec.contains_io = true;
             ec.background_execution = true;
         }
@@ -303,8 +315,7 @@ int execute_dir(char **tokens) {
     //if no directory is given use current directory (make sure to free after)
     if(tokens[1] == NULL) { // if no directory was specified, use cwd
          dirName = getcwd(dirName, 0);
-         printf("\n%s", dirName);
-         fflush(stdout);
+         
     } else {
         dirName = tokens[1];
     }
@@ -349,10 +360,10 @@ void execute_pause() {
     } while(c != '\n');
 }
 
-// accepts tokens array as a parameter, prints the tokens
+// accepts tokens array as a parameter, prints the tokens after echo
 void execute_echo(char **tokens) {
-	for(size_t i = 0; i < max_size; i++) {
-        printf("%s", tokens[i]);
+	for(size_t i = 1; tokens[i] != NULL; i++) {
+        printf("%s ", tokens[i]);
     }
 	
 }
@@ -386,6 +397,240 @@ int execute_command(char **tokens) {
         wait(NULL); // wait
     }
 }
+
+// executes bash commands, returns 1 if successful
+int execute_IO(char **tokens, struct exec_context ec) {
+
+    // if there is only output redirection
+    if(ec.output_redirection == true && ec.input_redirection == false) {
+        execute_output_redirection(tokens, ec);
+
+    // if there is only input redirection
+    } else if(ec.input_redirection == true && ec.output_redirection == false) {
+        execute_input_redirection(tokens, ec);
+
+    // if there is input and output redirection  
+    } else if(ec.input_redirection == true && ec.output_redirection == true) {
+        execute_input_output_redirection(tokens, ec);
+    
+    // if there is background execution
+    } else if (ec.background_execution == true) {
+        execute_background_execution(tokens, ec);
+
+    // if there is a pipe
+    } else if (ec.contains_pipe == true) {
+        execute_pipe(tokens, ec);
+    }
+
+}
+
+int execute_output_redirection(char **tokens, struct exec_context ec) {
+
+    // null terminate the array
+    for(size_t i = 0; tokens[i] != NULL; i++) {
+        if((strcmp(tokens[i], ">") == 0)) {
+            tokens[i] = NULL;
+            break;
+        }
+    }
+
+    int pid;
+
+    if ((pid = fork()) < 0) {  
+        printf("fork failed");
+        exit(1);
+    }
+    else if (pid == 0) { // fork successful, this is the child
+
+        // create output file    
+        int outFile = open(ec.output_file, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU | S_IRWXG| S_IRWXO);
+
+        //replace stdout with the specified output file
+        dup2(outFile, 1);
+        close(outFile);
+
+        execvp(tokens[0], tokens);  // execute command
+        printf("exec failed"); // exec should not return
+        exit(1);
+
+    } else { // parent                              
+        wait(NULL); // wait
+    }
+}
+
+
+int execute_input_redirection(char **tokens, struct exec_context ec) {
+
+    // null terminate the array
+    for(size_t i = 0; tokens[i] != NULL; i++) {
+        if((strcmp(tokens[i], "<") == 0)) {
+            tokens[i] = NULL;
+            break;
+        }
+    }
+
+    int pid;
+
+    if ((pid = fork()) < 0) {  
+        printf("fork failed");
+        exit(1);
+    }
+    else if (pid == 0) { // fork successful, this is the child
+
+        // create input file 
+        int inFile = open(ec.input_file, O_RDONLY);
+
+        //replace stdin with the specified input file
+        dup2(inFile, 0);
+        close(inFile);
+
+        execvp(tokens[0], tokens);  // execute command
+        printf("exec failed"); // exec should not return
+        exit(1);
+
+    } else { // parent                              
+        wait(NULL); // wait
+    }
+
+}
+
+int execute_input_output_redirection(char **tokens, struct exec_context ec) {
+
+    // null terminate the array
+    for(size_t i = 0; tokens[i] != NULL; i++) {
+        if((strcmp(tokens[i], "<") == 0)) {
+            tokens[i] = NULL;
+            break;
+        }
+    }
+
+    int pid;
+
+    if ((pid = fork()) < 0) {  
+        printf("fork failed");
+        exit(1);
+    }
+    else if (pid == 0) { // fork successful, this is the child
+
+        // create input and output files
+        int inFile = open(ec.input_file, O_RDONLY);
+        int outFile = open(ec.output_file, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU | S_IRWXG| S_IRWXO);
+
+        // replace stdin and stdout
+        dup2(inFile, 0); 
+        dup2(outFile, 1); 
+
+        // close duplicate file descriptors
+        close(inFile); 
+        close(outFile);
+
+        execvp(tokens[0], tokens);  // execute command
+        printf("exec failed"); // exec should not return
+        exit(1);
+
+    } else { // parent                              
+        wait(NULL); // wait
+    }
+
+}
+
+int execute_background_execution(char **tokens, struct exec_context ec) {
+
+    // null terminate the array
+    for(size_t i = 0; tokens[i] != NULL; i++) {
+        if((strcmp(tokens[i], "&") == 0)) {
+            tokens[i] = NULL;
+            break;
+        }
+    }
+
+    int pid;
+
+    if ((pid = fork()) < 0) {  
+        printf("fork failed");
+        exit(1);
+
+    } 
+    if (pid == 0) { // fork successful, this is the child
+        execvp(tokens[0], tokens);  // execute command
+        printf("exec failed");
+        exit(1);
+    }
+    
+    return 1;
+
+    // don't wait here
+}
+
+int execute_pipe(char **tokens, struct exec_context ec) {
+
+    // create two separate arrays, one for each process
+    char **command1, **command2;
+
+    int i;
+    while(strcmp(tokens[i], "|") != 0) {
+        command1[i] = tokens[i];
+        i++;
+    }
+    command1[i] = NULL;
+
+    int j;
+    for(j = i+1; tokens[j] != NULL; j++) {
+        command2[j] = tokens[j];
+    } 
+    command2[j+1] = NULL;
+
+    for(size_t i = 0; command1[i] != NULL; i++) {
+        printf("%s ", command1[i]);
+    }
+
+    for(size_t i = 0; command2[i] != NULL; i++) {
+        printf("%s ", command2[i]);
+    }
+
+    exit(0);
+
+
+    int pid1 = -1; // pid of first child process
+    int pid2 = -1; // pid of second child process
+
+    // an array containing the input and output file descriptors
+    // pipe_file_descs[0] -> read from this
+    // pipe_file_descs[1] -> write to this 
+    int fd[2];
+
+    // create pipe
+  if (pipe(fd) == -1){
+      printf("\ncould not create pipe");
+      return 0;
+  }
+
+  // fork first child 
+  if ((pid1 = fork()) < 0){
+    perror("fork 1 failed!\n");
+    return 0;
+  }
+
+  if(pid1 == 0) { // success, this is the first child
+    // close read side of pipe
+    close(fd[0]);
+    // redirect stdout to write side of pipe
+    dup2(fd[1], 1);
+    close(fd[1]);
+    // exec program 1
+    if (execvp(command1[0], command1) < 0){
+      perror("Could not execute command 1");
+      exit(-1);
+    }
+  }
+
+
+
+}
+
+
+
+
 
 
 
