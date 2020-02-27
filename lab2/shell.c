@@ -11,9 +11,9 @@
 #include <sys/stat.h>
 
 #define max_size 10
-#define max_length 100
+#define max_length 1000
 
-// struct containing I/O execution context
+// struct containing bash command execution context
 struct exec_context {
 	
 	bool contains_io;
@@ -32,9 +32,13 @@ struct exec_context {
 	
 };
 
+// input line commands:
 void getInput(char* line);
+int get_file_input(char *line);
 int tokenize(char* line, char** tokens);
 void printShell();
+
+// parsing functions:
 int parse(char **tokens, struct exec_context ec);
 int is_built_in(char *token);
 struct exec_context is_io(char **tokens, struct exec_context ec);
@@ -63,11 +67,25 @@ int execute_background_execution(char **tokens, struct exec_context ec);
 int execute_pipe(char **tokens, struct exec_context ec);
 int execute_output_redirection_append(char **tokens, struct exec_context ec);
 
+// initialize batch mode file
+FILE *batch;
 
-int main() {
+int main(int argc, char *argv[]) {
 
-    bool running = true;
-    
+    bool batch_mode = false;
+
+    // check if a file was added to ./myshell
+    if(argc == 2) {
+        batch = fopen(argv[1], "r"); // open the input file in read mode
+
+        if (batch == NULL) { // check that the file exists
+            puts("ERROR: file does not exist");
+            exit(0);
+        }
+        batch_mode = true;
+    }
+
+    bool running = true; 
     while(running == true) {
         
         // initialize line and tokens array
@@ -86,9 +104,20 @@ int main() {
         ec.contains_pipe = false;
         ec.background_execution = false;
 
-        getInput(line);
+        // if batch mode is true read lines from the file
+        if(batch_mode == true) {
+            // if this is EOF
+            if(get_file_input(line) == -1) {
+                puts("EOF");
+                execute_quit(tokens);
+            }
+        
+        // else take user input
+        } else {
+            getInput(line);
+        }
 
-        if(line[0] == '\0') {
+        if(line[0] == '\0') { // fix this
             break; // no input given
         } else {
             tokenize(line, tokens);
@@ -102,12 +131,24 @@ int main() {
 
 }
 
-// gets the command line from user input
+// gets the command from user input
 void getInput(char* line) {
     
     printShell(); // print the current directory
 
     fgets(line, max_length, stdin); 
+
+}
+
+// gets the command from the batch file, returns -1 if EOF
+int get_file_input(char *line) {
+
+    printShell(); // print the current directory
+
+    size_t max = max_length;
+    int c = getline(&line, &max, batch);
+
+    return c;
 
 }
 
