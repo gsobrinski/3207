@@ -565,65 +565,92 @@ int execute_background_execution(char **tokens, struct exec_context ec) {
 int execute_pipe(char **tokens, struct exec_context ec) {
 
     // create two separate arrays, one for each process
-    char **command1, **command2;
+    char **command1 = calloc(max_size, sizeof(char *));        
+    char **command2 = calloc(max_size, sizeof(char *));        
 
     int i;
-    while(strcmp(tokens[i], "|") != 0) {
-        command1[i] = tokens[i];
+    for(i = 0; tokens[i] != NULL; i++) {
+        if(strcmp(tokens[i], "|") == 0) {
+            break;
+        } else {
+            command1[i] = tokens[i];
+        }
+    }
+    i++;
+
+    int j = 0;
+    while(tokens[i] != NULL) {
+        command2[j] = tokens[i];
         i++;
     }
-    command1[i] = NULL;
-
-    int j;
-    for(j = i+1; tokens[j] != NULL; j++) {
-        command2[j] = tokens[j];
-    } 
-    command2[j+1] = NULL;
-
-    for(size_t i = 0; command1[i] != NULL; i++) {
-        printf("%s ", command1[i]);
-    }
-
-    for(size_t i = 0; command2[i] != NULL; i++) {
-        printf("%s ", command2[i]);
-    }
-
-    exit(0);
 
 
-    int pid1 = -1; // pid of first child process
-    int pid2 = -1; // pid of second child process
+    // create process id for two children
+    int pid1 = -1; 
+    int pid2 = -1; 
 
-    // an array containing the input and output file descriptors
-    // pipe_file_descs[0] -> read from this
-    // pipe_file_descs[1] -> write to this 
+    // input/ouput file descriptors
     int fd[2];
 
     // create pipe
-  if (pipe(fd) == -1){
-      printf("\ncould not create pipe");
-      return 0;
-  }
-
-  // fork first child 
-  if ((pid1 = fork()) < 0){
-    perror("fork 1 failed!\n");
-    return 0;
-  }
-
-  if(pid1 == 0) { // success, this is the first child
-    // close read side of pipe
-    close(fd[0]);
-    // redirect stdout to write side of pipe
-    dup2(fd[1], 1);
-    close(fd[1]);
-    // exec program 1
-    if (execvp(command1[0], command1) < 0){
-      perror("Could not execute command 1");
-      exit(-1);
+    if (pipe(fd) == -1){
+        puts("pipe failed");
+        return 0;
     }
-  }
 
+    // command1
+    if ((pid1 = fork()) < 0){
+        puts("fork 1 failed");
+        return 0;
+    }
+
+    if(pid1 == 0) { // success, this is the first child
+        // close read side of pipe
+        close(fd[0]);
+        // redirect stdout to write side of pipe
+        dup2(fd[1], 1);
+        close(fd[1]);
+
+        // call first command
+        execvp(command1[0], command1);
+
+        // if this point is reached an error occurred
+        puts("this should not print");
+        return 0;
+    
+    }
+
+    // command2
+    if ((pid2 = fork()) < 0){
+        puts("fork 2 failed");
+        return 0;
+    }
+
+    if(pid2 == 0) { // success, child 2 is created
+        // close write side of pipe
+        close(fd[1]);
+        // redirect stdin to read side of pipe
+        dup2(fd[0], 0);
+        close(fd[0]);
+
+        // call command 2
+        execvp(command2[0], command2);
+
+        // if this point is reached an error occurred
+        puts("this should not print");
+        return 0;
+    
+    }
+
+    // -1 signifies to wait for ALL children to finish
+    waitpid(-1, NULL, 0);
+
+    close(fd[0]);
+    close(fd[1]);
+
+    // free memory used
+    free(command1);
+    free(command2);
 
 
 }
