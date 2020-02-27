@@ -32,7 +32,7 @@ struct exec_context {
 	
 };
 
-int getInput(char* line);
+void getInput(char* line);
 int tokenize(char* line, char** tokens);
 void printShell();
 int parse(char **tokens, struct exec_context ec);
@@ -46,21 +46,22 @@ int execute_built_in(char **tokens);
 int execute_IO(char **tokens, struct exec_context ec);
 
 // built in commands:
-int execute_cd(char *directory);
+void execute_cd(char *directory);
 int execute_dir(char **tokens);
-int execute_environ();
+void execute_environ();
 void execute_clr();
 void execute_pause();
 void execute_echo(char **tokens);
-void execute_quit();
+void execute_quit(char **tokens);
 void execute_help();
 
-// I/O redirection commands:
+// bash commands:
 int execute_output_redirection(char **tokens, struct exec_context ec);
 int execute_input_redirection(char **tokens, struct exec_context ec);
 int execute_input_output_redirection(char **tokens, struct exec_context ec);
 int execute_background_execution(char **tokens, struct exec_context ec);
 int execute_pipe(char **tokens, struct exec_context ec);
+int execute_output_redirection_append(char **tokens, struct exec_context ec);
 
 
 int main() {
@@ -85,13 +86,15 @@ int main() {
         ec.contains_pipe = false;
         ec.background_execution = false;
 
-        int result = getInput(line);
+        getInput(line);
 
-        if(result == 0) {
-            printf("\nno input was given\n");
+        if(line[0] == '\0') {
+            break; // no input given
         } else {
-            tokenize(line, tokens); 
-            parse(tokens, ec);
+            tokenize(line, tokens);
+            if(!parse(tokens, ec)) {
+                puts("ERROR");
+            }
         }
 
         free(tokens);
@@ -100,16 +103,12 @@ int main() {
 }
 
 // gets the command line from user input
-int getInput(char* line) {
+void getInput(char* line) {
+    
     printShell(); // print the current directory
 
     fgets(line, max_length, stdin); 
 
-    if(strlen(line) == 0) { // if no input was entered
-        return 0;
-    } else {
-        return 1;
-    }
 }
 
 int tokenize(char* line, char** tokens) {
@@ -143,21 +142,32 @@ int parse(char **tokens, struct exec_context ec) {
 
     ec = is_io(tokens, ec);
 
-    //print_exec_context(ec);
+    if(ec.contains_error == true) {
+        return 0; // error with command input
+    }
 
-    // if there is redirection
-    if(ec.contains_io == true) {
-        execute_IO(tokens, ec);
-        return 1;
-    
-    // if there is no redirection, this is either a built in or a regular command
-    } else {
-        if(is_built_in(tokens[0])) {
-            execute_built_in(tokens);
-            return 1;
+    // first check for built ins
+    if(is_built_in(tokens[0])) {
+        if(!execute_built_in(tokens)) {
+            return 0; // error occurred
         } else {
-            execute_command(tokens);
-            return 1;
+            return 1; //success
+        }
+    
+    // next check for bash commands
+    } else if (ec.contains_io == true) {
+        if(!execute_IO(tokens, ec)) {
+            return 0; // error occurred
+        } else {
+            return 1; // success
+        }
+    
+    // else this is a regular command
+    } else {
+        if(!execute_command(tokens)) {
+            return 0; // error occurred
+        } else {
+            return 1; // success
         }
     }
 
@@ -199,6 +209,9 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
 			if (i == 0) { // if this is the first token there is an error
 				ec.contains_error = true;
 				return ec;
+            } else if(tokens[i+1] == NULL) { // if no file is specified there is an error
+                ec.contains_error = true;
+                return ec;
             }
 
             ec.contains_io = true;
@@ -211,6 +224,9 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
             if (i == 0) { // if this is the first token there is an error
                 ec.contains_error = true;
                 return ec;
+            } else if(tokens[i+1] == NULL) { // if no file is specified there is an error
+                ec.contains_error = true;
+                return ec;
             }
 
             ec.contains_io = true;
@@ -221,6 +237,9 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         // if there is appending output redirection
         if (strcmp(tokens[i], ">>") == 0) { 
             if (i == 0 ) { // if this is the first token there is an error
+                ec.contains_error = true;
+                return ec;
+            } else if(tokens[i+1] == NULL) { // if no file is specified there is an error
                 ec.contains_error = true;
                 return ec;
             }
@@ -268,38 +287,235 @@ void print_exec_context(struct exec_context ec) {
 
 
 int execute_built_in(char **tokens) {
+    
+    int result = 1;
 
     if(strcmp(tokens[0], "cd") == 0) {
-        execute_cd(tokens[1]); // pass the argument as the new directory
+        execute_cd(tokens[1]); 
+        return 1;
 
-    } else if(strcmp(tokens[0], "dir") == 0) {
-        execute_dir(tokens);
+    } else if(strcmp(tokens[0], "dir") == 0) { // must support output redirection
 
-    } else if(strcmp(tokens[0], "environ") == 0) {
+        char *file_name; // this will be the output file
+
+        for(size_t i = 0; tokens[i] != NULL; i++) {
+
+            // output redirection to file 
+            if(strcmp(tokens[i], ">") == 0) {
+                if(tokens[i+1] == NULL) {
+                    return 0; // error
+                } else {
+                    file_name = tokens[i+1]; // save output file name
+                    tokens[i] = NULL; // null terminate the array
+                }
+
+                int duplicate = dup(1); 
+                int outFile = open(file_name, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU | S_IRWXG| S_IRWXO); // create the output file
+                dup2(outFile, 1);
+                close(outFile);
+
+                result = execute_dir(tokens); // when dir is called, its output will go into the outFile
+            
+                dup2(duplicate, 1);
+                close(outFile);
+                return result;
+
+            // output redirection appending to file
+            } else if(strcmp(tokens[i], ">>") == 0) {
+                if(tokens[i+1] == NULL) {
+                    return 0; // error
+                } else {
+                    file_name = tokens[i+1]; // save output file name
+                    tokens[i] = NULL; // null terminate the array
+                }
+
+                int duplicate = dup(1); 
+                int outFile = open(file_name, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU | S_IRWXG| S_IRWXO); // create the output file
+                dup2(outFile, 1);
+                close(outFile);
+                
+                result = execute_dir(tokens);
+                dup2(duplicate, 1);
+                close(outFile);
+                return result;
+
+            }
+        }
+
+        // if no redirection, call dir normally
+        result = execute_dir(tokens);
+
+        return result;
+
+    } else if(strcmp(tokens[0], "environ") == 0) { // must support output redirection
+        
+        char *file_name; // this will be the output file
+
+        for(size_t i = 0; tokens[i] != NULL; i++) {
+
+            // output redirection to file 
+            if(strcmp(tokens[i], ">") == 0) {
+                if(tokens[i+1] == NULL) {
+                    return 0; // error
+                } else {
+                    file_name = tokens[i+1]; // save output file name
+                    tokens[i] = NULL; // null terminate the array
+                }
+
+                int duplicate = dup(1); 
+                int outFile = open(file_name, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU | S_IRWXG| S_IRWXO); // create the output file
+                dup2(outFile, 1);
+                close(outFile);
+
+                execute_environ(); // when environ is called, its output will go into the outFile
+
+                dup2(duplicate, 1);
+                close(outFile);
+                return 1;
+
+            // output redirection appending to file
+            } else if(strcmp(tokens[i], ">>") == 0) {
+                if(tokens[i+1] == NULL) {
+                    return 0; // error
+                } else {
+                    file_name = tokens[i+1]; // save output file name
+                    tokens[i] = NULL; // null terminate the array
+                }
+
+                int duplicate = dup(1); 
+                int outFile = open(file_name, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU | S_IRWXG| S_IRWXO); // create the output file
+                dup2(outFile, 1);
+                close(outFile);
+
+                execute_environ(); // when echo is called, its output will go into the outFile
+
+                dup2(duplicate, 1);
+                close(outFile);
+                return 1;
+
+            }
+        }
+
+        // if no redirection, call environ normally
         execute_environ();
+        return 1;
 
     } else if(strcmp(tokens[0], "clr") == 0) {
         execute_clr();
 
     } else if(strcmp(tokens[0], "pause") == 0) {
         execute_pause();
+        return 1;
 
-    } else if(strcmp(tokens[0], "echo") == 0) {
+    } else if(strcmp(tokens[0], "echo") == 0) { // must support output redirection
+
+        char *file_name; // this will be the output file
+
+        for(size_t i = 0; tokens[i] != NULL; i++) {
+
+            // output redirection to file 
+            if(strcmp(tokens[i], ">") == 0) {
+                if(tokens[i+1] == NULL) {
+                    return 0; // error
+                } else {
+                    file_name = tokens[i+1]; // save output file name
+                    tokens[i] = NULL; // null terminate the array
+                }
+
+                int duplicate = dup(1); 
+                int outFile = open(file_name, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU | S_IRWXG| S_IRWXO); // create the output file
+                dup2(outFile, 1);
+                close(outFile);
+                execute_echo(tokens); // when echo is called, its output will go into the outFile
+                dup2(duplicate, 1);
+                close(outFile);
+                return 1;
+
+            // output redirection appending to file
+            } else if(strcmp(tokens[i], ">>") == 0) {
+                if(tokens[i+1] == NULL) {
+                    return 0; // error
+                } else {
+                    file_name = tokens[i+1]; // save output file name
+                    tokens[i] = NULL; // null terminate the array
+                }
+
+                int duplicate = dup(1); 
+                int outFile = open(file_name, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU | S_IRWXG| S_IRWXO); // create the output file
+                dup2(outFile, 1);
+                close(outFile);
+                execute_echo(tokens); // when echo is called, its output will go into the outFile
+                dup2(duplicate, 1);
+                close(outFile);
+                return 1;
+
+            }
+        }
+
+        // if no redirection, call echo normally
         execute_echo(tokens);
+        return 1;
 
     } else if(strcmp(tokens[0], "quit") == 0) {
-        execute_quit();
+        execute_quit(tokens);
+        return 1;
 
-    } else if(strcmp(tokens[0], "help") == 0) {
+    } else if(strcmp(tokens[0], "help") == 0) { // must support output redirection
+
+        char *file_name; // this will be the output file
+
+        for(size_t i = 0; tokens[i] != NULL; i++) {
+
+            // output redirection to file 
+            if(strcmp(tokens[i], ">") == 0) {
+                if(tokens[i+1] == NULL) {
+                    return 0; // error
+                } else {
+                    file_name = tokens[i+1]; // save output file name
+                    tokens[i] = NULL; // null terminate the array
+                }
+
+                int duplicate = dup(1); 
+                int outFile = open(file_name, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU | S_IRWXG| S_IRWXO); // create the output file
+                dup2(outFile, 1);
+                close(outFile);
+                execute_help(); // when help is called, its output will go into the outFile
+                dup2(duplicate, 1);
+                close(outFile);
+                return 1;
+
+            // output redirection appending to file
+            } else if(strcmp(tokens[i], ">>") == 0) {
+                if(tokens[i+1] == NULL) {
+                    return 0; // error
+                } else {
+                    file_name = tokens[i+1]; // save output file name
+                    tokens[i] = NULL; // null terminate the array
+                }
+
+                int duplicate = dup(1); 
+                int outFile = open(file_name, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU | S_IRWXG| S_IRWXO); // create the output file
+                dup2(outFile, 1);
+                close(outFile);
+                execute_help(); // when help is called, its output will go into the outFile
+                dup2(duplicate, 1);
+                close(outFile);
+                return 1;
+
+            }
+        }
+
+        // if no redirection, call help normally
         execute_help();
+        return 1;
     }
 
 }
 
 // built in functions
 
-//accepts new directory as parameter, returns 1 if successful
-int execute_cd(char *directory) {
+//accepts new directory as parameter
+void execute_cd(char *directory) {
 	//should also change the PWD environment variable
     chdir(directory);
 
@@ -307,9 +523,6 @@ int execute_cd(char *directory) {
 
 //accepts new directory as parameter, returns 1 if successful
 int execute_dir(char **tokens) {
-
-	// include additional if statements for output redirection
-	// make sure to check for errors
 
     char *dirName = NULL;
     //if no directory is given use current directory (make sure to free after)
@@ -335,15 +548,19 @@ int execute_dir(char **tokens) {
     struct dirent *s; // directory entry 
     while( (s = readdir(dir)) != NULL){ // get contents 
         printf("%s\t", s->d_name); // print name of dirent 
+        fflush(stdout);
     }
+
+    return 1; // success
 }
 
-// print environment variables, returns 1 if successful
-int execute_environ() {
+// print environment variables
+void execute_environ() {
 	
-	// include additional if statements for output redirection
-	printf("\nPATH: %s", getenv("PATH"));
-    printf("\nUSER: %s", getenv("USER"));
+	printf("\nPATH: %s\n", getenv("PATH"));
+    fflush(stdout);
+    printf("\nUSER: %s\n", getenv("USER"));
+    fflush(stdout);
 }
 
 // clear the screen
@@ -362,21 +579,25 @@ void execute_pause() {
 
 // accepts tokens array as a parameter, prints the tokens after echo
 void execute_echo(char **tokens) {
+
 	for(size_t i = 1; tokens[i] != NULL; i++) {
-        printf("%s ", tokens[i]);
+        printf("%s ",tokens[i]);
+        fflush(stdout);
     }
 	
 }
 
-void execute_quit() {
+void execute_quit(char **tokens) {
 	//do resource cleanup
+    free(tokens);
 	exit(0);
 }
 
+// prints the user manual
 void execute_help() {
 	
-    // include additional if statements for output redirection
-	// print the user manual
+	printf("\nuser manual goes here");
+    fflush(stdout);
 }
 
 // execute commands with no I/O redirection, returns 0 if error occurs
@@ -385,17 +606,17 @@ int execute_command(char **tokens) {
     int pid;
 
     if ((pid = fork()) < 0) {  
-        printf("fork failed");
-        exit(1);
+        return 0; // error, fork failed
     }
     else if (pid == 0) { // fork successful, this is the child
         execvp(tokens[0], tokens);  // execute command
-        printf("exec failed");
-        exit(1);
+        return 0; // error, exec failed
 
     } else { // parent                              
         wait(NULL); // wait
     }
+
+    return 1; // success!
 }
 
 // executes bash commands, returns 1 if successful
@@ -403,27 +624,56 @@ int execute_IO(char **tokens, struct exec_context ec) {
 
     // if there is only output redirection
     if(ec.output_redirection == true && ec.input_redirection == false) {
-        execute_output_redirection(tokens, ec);
+        if(!execute_output_redirection(tokens, ec)) {
+            return 0; // error
+        } else {
+            return 1;
+        }
+
+    // if there is only input redirection
+    } else if(ec.output_redirection_append == true) {
+        if(!execute_output_redirection_append(tokens, ec)) {
+            return 0; // error
+        } else {
+            return 1;
+        }
 
     // if there is only input redirection
     } else if(ec.input_redirection == true && ec.output_redirection == false) {
-        execute_input_redirection(tokens, ec);
+        if(!execute_input_redirection(tokens, ec)) {
+            return 0; // error
+        } else {
+            return 1;
+        }
 
     // if there is input and output redirection  
     } else if(ec.input_redirection == true && ec.output_redirection == true) {
-        execute_input_output_redirection(tokens, ec);
+        if(!execute_input_output_redirection(tokens, ec)) {
+            return 0; //error
+        } else {
+            return 1;
+        }
     
     // if there is background execution
     } else if (ec.background_execution == true) {
-        execute_background_execution(tokens, ec);
+        if(!execute_background_execution(tokens, ec)) {
+            return 0; //error
+        } else {
+            return 1;
+        }
 
     // if there is a pipe
     } else if (ec.contains_pipe == true) {
-        execute_pipe(tokens, ec);
+        if(!execute_pipe(tokens, ec)) {
+            return 0; // error
+        } else {
+            return 1;
+        }
     }
 
 }
 
+// command > file
 int execute_output_redirection(char **tokens, struct exec_context ec) {
 
     // null terminate the array
@@ -437,8 +687,7 @@ int execute_output_redirection(char **tokens, struct exec_context ec) {
     int pid;
 
     if ((pid = fork()) < 0) {  
-        printf("fork failed");
-        exit(1);
+        return 0; // error, fork failed
     }
     else if (pid == 0) { // fork successful, this is the child
 
@@ -450,15 +699,53 @@ int execute_output_redirection(char **tokens, struct exec_context ec) {
         close(outFile);
 
         execvp(tokens[0], tokens);  // execute command
-        printf("exec failed"); // exec should not return
-        exit(1);
+        return 0; // error, exec failed
 
     } else { // parent                              
         wait(NULL); // wait
     }
+
+    return 1; //success
 }
 
+// command >> file
+int execute_output_redirection_append(char **tokens, struct exec_context ec) {
 
+    // null terminate the array
+    for(size_t i = 0; tokens[i] != NULL; i++) {
+        if((strcmp(tokens[i], ">>") == 0)) {
+            tokens[i] = NULL;
+            break;
+        }
+    }
+
+    int pid;
+
+    if ((pid = fork()) < 0) {  
+        exit(1);
+        return 0; //error, fork failed
+    }
+    else if (pid == 0) { // fork successful, this is the child
+
+        // create output file    
+        int outFile = open(ec.output_file, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU | S_IRWXG| S_IRWXO);
+
+        //replace stdout with the specified output file
+        dup2(outFile, 1);
+        close(outFile);
+
+        execvp(tokens[0], tokens);  // execute command
+        exit(1);
+        return 0; //error, exec failed
+
+    } else { // parent                              
+        wait(NULL); // wait
+    }
+
+    return 1; // success
+}
+
+// command < file
 int execute_input_redirection(char **tokens, struct exec_context ec) {
 
     // null terminate the array
@@ -472,8 +759,8 @@ int execute_input_redirection(char **tokens, struct exec_context ec) {
     int pid;
 
     if ((pid = fork()) < 0) {  
-        printf("fork failed");
         exit(1);
+        return 0; //error, fork failed
     }
     else if (pid == 0) { // fork successful, this is the child
 
@@ -485,15 +772,19 @@ int execute_input_redirection(char **tokens, struct exec_context ec) {
         close(inFile);
 
         execvp(tokens[0], tokens);  // execute command
-        printf("exec failed"); // exec should not return
         exit(1);
+        return 0; //error, exec failed
 
     } else { // parent                              
         wait(NULL); // wait
     }
 
+    return 1; //success
+
 }
 
+// command < file > file
+// returns 1 if successful
 int execute_input_output_redirection(char **tokens, struct exec_context ec) {
 
     // null terminate the array
@@ -507,8 +798,8 @@ int execute_input_output_redirection(char **tokens, struct exec_context ec) {
     int pid;
 
     if ((pid = fork()) < 0) {  
-        printf("fork failed");
         exit(1);
+        return 0; //error, fork failed
     }
     else if (pid == 0) { // fork successful, this is the child
 
@@ -525,15 +816,19 @@ int execute_input_output_redirection(char **tokens, struct exec_context ec) {
         close(outFile);
 
         execvp(tokens[0], tokens);  // execute command
-        printf("exec failed"); // exec should not return
         exit(1);
+        return 0; //error, exec failed
 
     } else { // parent                              
         wait(NULL); // wait
     }
 
+    return 1; // success
+
 }
 
+// command &
+// returns 1 if successful;
 int execute_background_execution(char **tokens, struct exec_context ec) {
 
     // null terminate the array
@@ -547,14 +842,14 @@ int execute_background_execution(char **tokens, struct exec_context ec) {
     int pid;
 
     if ((pid = fork()) < 0) {  
-        printf("fork failed");
         exit(1);
+        return 0; // error, fork failed
 
     } 
     if (pid == 0) { // fork successful, this is the child
         execvp(tokens[0], tokens);  // execute command
-        printf("exec failed");
         exit(1);
+        return 0; //error, exec failed
     }
     
     return 1;
@@ -562,6 +857,7 @@ int execute_background_execution(char **tokens, struct exec_context ec) {
     // don't wait here
 }
 
+// command | command
 int execute_pipe(char **tokens, struct exec_context ec) {
 
     // create two separate arrays, one for each process
@@ -594,14 +890,12 @@ int execute_pipe(char **tokens, struct exec_context ec) {
 
     // create pipe
     if (pipe(fd) == -1){
-        puts("pipe failed");
-        return 0;
+        return 0; // error, pipe failed to create
     }
 
     // command1
     if ((pid1 = fork()) < 0){
-        puts("fork 1 failed");
-        return 0;
+        return 0; // error, fork did not create
     }
 
     if(pid1 == 0) { // success, this is the first child
@@ -615,15 +909,13 @@ int execute_pipe(char **tokens, struct exec_context ec) {
         execvp(command1[0], command1);
 
         // if this point is reached an error occurred
-        puts("this should not print");
-        return 0;
+        return 0; 
     
     }
 
     // command2
     if ((pid2 = fork()) < 0){
-        puts("fork 2 failed");
-        return 0;
+        return 0; // error, fork failed
     }
 
     if(pid2 == 0) { // success, child 2 is created
@@ -637,7 +929,6 @@ int execute_pipe(char **tokens, struct exec_context ec) {
         execvp(command2[0], command2);
 
         // if this point is reached an error occurred
-        puts("this should not print");
         return 0;
     
     }
@@ -652,6 +943,7 @@ int execute_pipe(char **tokens, struct exec_context ec) {
     free(command1);
     free(command2);
 
+    return 1; //success!
 
 }
 
