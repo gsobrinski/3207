@@ -107,7 +107,8 @@ int main(int argc, char *argv[]) {
             // if this is EOF
             if(get_file_input(line) == -1) {
                 puts("EOF");
-                execute_quit(tokens);
+                free(tokens);
+                exit(0);
             }
         
         // else take user input
@@ -244,11 +245,11 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         // if there is input redirection
 		if (strcmp(tokens[i], "<") == 0) {
 			if (i == 0) { // if this is the first token there is an error
-                puts("syntax error near unexpected token `newline'");
+                puts("syntax error near unexpected token 'newline'");
 				ec.contains_error = true;
 				return ec;
             } else if(tokens[i+1] == NULL) { // if no file is specified there is an error
-                puts("syntax error near unexpected token `newline'");
+                puts("syntax error near unexpected token 'newline'");
                 ec.contains_error = true;
                 return ec;
             }
@@ -261,11 +262,11 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         // if there is output redirection
         if (strcmp(tokens[i], ">") == 0) {
             if (i == 0) { // if this is the first token there is an error
-                puts("syntax error near unexpected token `newline'");
+                puts("syntax error near unexpected token 'newline'");
                 ec.contains_error = true;
                 return ec;
             } else if(tokens[i+1] == NULL) { // if no file is specified there is an error
-                puts("syntax error near unexpected token `newline'");
+                puts("syntax error near unexpected token 'newline'");
                 ec.contains_error = true;
                 return ec;
             }
@@ -278,11 +279,11 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         // if there is appending output redirection
         if (strcmp(tokens[i], ">>") == 0) { 
             if (i == 0 ) { // if this is the first token there is an error
-                puts("syntax error near unexpected token `newline'");
+                puts("syntax error near unexpected token 'newline'");
                 ec.contains_error = true;
                 return ec;
             } else if(tokens[i+1] == NULL) { // if no file is specified there is an error
-                puts("syntax error near unexpected token `newline'");
+                puts("syntax error near unexpected token 'newline'");
                 ec.contains_error = true;
                 return ec;
             }
@@ -296,12 +297,12 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         if (strcmp(tokens[i], "|") == 0) {
             // check for errors: pipe must have a command on either side
             if (i == 0) {
-                puts("bash: syntax error near unexpected token `|'");
+                puts("bash: syntax error near unexpected token '|'");
                 ec.contains_error = true;
                 return ec;
             }
             if (tokens[i+1]  == NULL) {
-                puts("bash: syntax error near unexpected token `|'");
+                puts("bash: syntax error near unexpected token '|'");
                 ec.contains_error = true;
                 return ec;
             }
@@ -346,7 +347,7 @@ int execute_built_in(char **tokens) {
             // output redirection to file 
             if(strcmp(tokens[i], ">") == 0) {
                 if(tokens[i+1] == NULL) { // if the output file does not exist
-                    puts("syntax error near unexpected token `newline'");
+                    puts("syntax error near unexpected token 'newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -367,7 +368,7 @@ int execute_built_in(char **tokens) {
             // output redirection appending to file
             } else if(strcmp(tokens[i], ">>") == 0) {
                 if(tokens[i+1] == NULL) {
-                    puts("syntax error near unexpected token `newline'");
+                    puts("syntax error near unexpected token 'newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -401,7 +402,7 @@ int execute_built_in(char **tokens) {
             // output redirection to file 
             if(strcmp(tokens[i], ">") == 0) {
                 if(tokens[i+1] == NULL) {
-                    puts("syntax error near unexpected token `newline'");
+                    puts("syntax error near unexpected token 'newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -422,7 +423,7 @@ int execute_built_in(char **tokens) {
             // output redirection appending to file
             } else if(strcmp(tokens[i], ">>") == 0) {
                 if(tokens[i+1] == NULL) {
-                    puts("syntax error near unexpected token `newline'");
+                    puts("syntax error near unexpected token 'newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -463,7 +464,7 @@ int execute_built_in(char **tokens) {
             // output redirection to file 
             if(strcmp(tokens[i], ">") == 0) {
                 if(tokens[i+1] == NULL) {
-                    puts("syntax error near unexpected token `newline'");
+                    puts("syntax error near unexpected token 'newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -482,7 +483,7 @@ int execute_built_in(char **tokens) {
             // output redirection appending to file
             } else if(strcmp(tokens[i], ">>") == 0) {
                 if(tokens[i+1] == NULL) {
-                    puts("syntax error near unexpected token `newline'");
+                    puts("syntax error near unexpected token 'newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -518,7 +519,7 @@ int execute_built_in(char **tokens) {
             // output redirection to file 
             if(strcmp(tokens[i], ">") == 0) {
                 if(tokens[i+1] == NULL) {
-                    puts("syntax error near unexpected token `newline'");
+                    puts("syntax error near unexpected token 'newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -537,7 +538,7 @@ int execute_built_in(char **tokens) {
             // output redirection appending to file
             } else if(strcmp(tokens[i], ">>") == 0) {
                 if(tokens[i+1] == NULL) {
-                    puts("syntax error near unexpected token `newline'");
+                    puts("syntax error near unexpected token 'newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -665,6 +666,7 @@ int execute_command(char **tokens) {
     else if (pid == 0) { // fork successful, this is the child
         execvp(tokens[0], tokens);  // execute command
         puts("error: exec failed");
+        exit(0);
         return 0; // error, exec failed
 
     } else { // parent                              
@@ -756,6 +758,7 @@ int execute_output_redirection(char **tokens, struct exec_context ec) {
 
         execvp(tokens[0], tokens);  // execute command
         puts("error: exec failed");
+        exit(0);
         return 0; // error, exec failed
 
     } else { // parent                              
@@ -793,6 +796,7 @@ int execute_output_redirection_append(char **tokens, struct exec_context ec) {
 
         execvp(tokens[0], tokens);  // execute command
         puts("error: exec failed");
+        exit(0);
         return 0; //error, exec failed
 
     } else { // parent                              
@@ -830,6 +834,7 @@ int execute_input_redirection(char **tokens, struct exec_context ec) {
 
         execvp(tokens[0], tokens);  // execute command
         puts("error: exec failed");
+        exit(0);
         return 0; //error, exec failed
 
     } else { // parent                              
@@ -874,6 +879,7 @@ int execute_input_output_redirection(char **tokens, struct exec_context ec) {
 
         execvp(tokens[0], tokens);  // execute command
         puts("error: exec failed");
+        exit(0);
         return 0; //error, exec failed
 
     } else { // parent                              
@@ -906,6 +912,7 @@ int execute_background_execution(char **tokens, struct exec_context ec) {
     if (pid == 0) { // fork successful, this is the child
         execvp(tokens[0], tokens);  // execute command
         puts("error: exec failed");
+        exit(0);
         return 0; //error, exec failed
     }
     
@@ -969,6 +976,7 @@ int execute_pipe(char **tokens, struct exec_context ec) {
 
         // if this point is reached an error occurred
         puts("error: exec failed");
+        exit(0);
         return 0; 
     
     }
@@ -991,6 +999,7 @@ int execute_pipe(char **tokens, struct exec_context ec) {
 
         // if this point is reached an error occurred
         puts("error: exec failed");
+        exit(0);
         return 0;
     
     }
