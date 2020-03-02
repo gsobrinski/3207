@@ -27,9 +27,7 @@ struct exec_context {
 	
 	char *input_file;
 	char *output_file;
-	char *pipe_command_1;
-	char *pipe_command_2;
-	
+   
 };
 
 // input line commands:
@@ -79,7 +77,7 @@ int main(int argc, char *argv[]) {
         batch = fopen(argv[1], "r"); // open the input file in read mode
 
         if (batch == NULL) { // check that the file exists
-            puts("ERROR: file does not exist");
+            puts("error: No such file or directory");
             exit(0);
         }
         batch_mode = true;
@@ -117,12 +115,9 @@ int main(int argc, char *argv[]) {
             getInput(line);
         }
 
-        if(line[0] == '\0') { // fix this
-            break; // no input given
-        } else {
+        if(line[0] != '\n') { 
             tokenize(line, tokens);
             if(!parse(tokens, ec)) {
-                puts("ERROR");
             }
         }
 
@@ -184,6 +179,7 @@ int parse(char **tokens, struct exec_context ec) {
     ec = is_io(tokens, ec);
 
     if(ec.contains_error == true) {
+        
         return 0; // error with command input
     }
 
@@ -248,9 +244,11 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         // if there is input redirection
 		if (strcmp(tokens[i], "<") == 0) {
 			if (i == 0) { // if this is the first token there is an error
+                puts("syntax error near unexpected token `newline'");
 				ec.contains_error = true;
 				return ec;
             } else if(tokens[i+1] == NULL) { // if no file is specified there is an error
+                puts("syntax error near unexpected token `newline'");
                 ec.contains_error = true;
                 return ec;
             }
@@ -263,9 +261,11 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         // if there is output redirection
         if (strcmp(tokens[i], ">") == 0) {
             if (i == 0) { // if this is the first token there is an error
+                puts("syntax error near unexpected token `newline'");
                 ec.contains_error = true;
                 return ec;
             } else if(tokens[i+1] == NULL) { // if no file is specified there is an error
+                puts("syntax error near unexpected token `newline'");
                 ec.contains_error = true;
                 return ec;
             }
@@ -278,9 +278,11 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         // if there is appending output redirection
         if (strcmp(tokens[i], ">>") == 0) { 
             if (i == 0 ) { // if this is the first token there is an error
+                puts("syntax error near unexpected token `newline'");
                 ec.contains_error = true;
                 return ec;
             } else if(tokens[i+1] == NULL) { // if no file is specified there is an error
+                puts("syntax error near unexpected token `newline'");
                 ec.contains_error = true;
                 return ec;
             }
@@ -294,18 +296,19 @@ struct exec_context is_io(char **tokens, struct exec_context ec) {
         if (strcmp(tokens[i], "|") == 0) {
             // check for errors: pipe must have a command on either side
             if (i == 0) {
+                puts("bash: syntax error near unexpected token `|'");
                 ec.contains_error = true;
                 return ec;
             }
             if (tokens[i+1]  == NULL) {
+                puts("bash: syntax error near unexpected token `|'");
                 ec.contains_error = true;
                 return ec;
             }
 
             ec.contains_io = true;
             ec.contains_pipe = true;
-            ec.pipe_command_1 = tokens[i-1];
-            ec.pipe_command_2 = tokens[i+1];
+        
         }
 
         if (strcmp(tokens[i], "&") == 0) {
@@ -321,11 +324,10 @@ void print_exec_context(struct exec_context ec) {
 
     printf("ec.contains_io: %d\nec.contains_error: %d\nec.input_redirection: %d\nec.output_redirection: %d\nec.output_redirection_append: %d\nec.contains_pipe: %d\nec.background_execution: %d\n", ec.contains_io, ec.contains_error, ec.input_redirection, ec.output_redirection, ec.output_redirection_append, ec.contains_pipe, ec.background_execution);
 	
-	printf("input_file: %s\noutput_file: %s\npipe_command_1: %s\npipe_command_2: %s\n", ec.input_file, ec.output_file, ec.pipe_command_1, ec.pipe_command_2);
+	printf("input_file: %s\noutput_file: %s", ec.input_file, ec.output_file);
 
 
 }
-
 
 int execute_built_in(char **tokens) {
     
@@ -343,7 +345,8 @@ int execute_built_in(char **tokens) {
 
             // output redirection to file 
             if(strcmp(tokens[i], ">") == 0) {
-                if(tokens[i+1] == NULL) {
+                if(tokens[i+1] == NULL) { // if the output file does not exist
+                    puts("syntax error near unexpected token `newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -364,6 +367,7 @@ int execute_built_in(char **tokens) {
             // output redirection appending to file
             } else if(strcmp(tokens[i], ">>") == 0) {
                 if(tokens[i+1] == NULL) {
+                    puts("syntax error near unexpected token `newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -397,6 +401,7 @@ int execute_built_in(char **tokens) {
             // output redirection to file 
             if(strcmp(tokens[i], ">") == 0) {
                 if(tokens[i+1] == NULL) {
+                    puts("syntax error near unexpected token `newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -417,6 +422,7 @@ int execute_built_in(char **tokens) {
             // output redirection appending to file
             } else if(strcmp(tokens[i], ">>") == 0) {
                 if(tokens[i+1] == NULL) {
+                    puts("syntax error near unexpected token `newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -457,6 +463,7 @@ int execute_built_in(char **tokens) {
             // output redirection to file 
             if(strcmp(tokens[i], ">") == 0) {
                 if(tokens[i+1] == NULL) {
+                    puts("syntax error near unexpected token `newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -475,6 +482,7 @@ int execute_built_in(char **tokens) {
             // output redirection appending to file
             } else if(strcmp(tokens[i], ">>") == 0) {
                 if(tokens[i+1] == NULL) {
+                    puts("syntax error near unexpected token `newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -510,6 +518,7 @@ int execute_built_in(char **tokens) {
             // output redirection to file 
             if(strcmp(tokens[i], ">") == 0) {
                 if(tokens[i+1] == NULL) {
+                    puts("syntax error near unexpected token `newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -528,6 +537,7 @@ int execute_built_in(char **tokens) {
             // output redirection appending to file
             } else if(strcmp(tokens[i], ">>") == 0) {
                 if(tokens[i+1] == NULL) {
+                    puts("syntax error near unexpected token `newline'");
                     return 0; // error
                 } else {
                     file_name = tokens[i+1]; // save output file name
@@ -576,6 +586,7 @@ int execute_dir(char **tokens) {
 
     // check for error
     if(dirName == NULL) {
+        puts("error: directory name not found");
         return 0;
     }
 
@@ -583,6 +594,7 @@ int execute_dir(char **tokens) {
 
     // check for error
     if(dir == NULL) {
+        puts("error: directory not found");
         return 0;
     }
 
@@ -647,10 +659,12 @@ int execute_command(char **tokens) {
     int pid;
 
     if ((pid = fork()) < 0) {  
+        puts("error: fork failed");
         return 0; // error, fork failed
     }
     else if (pid == 0) { // fork successful, this is the child
         execvp(tokens[0], tokens);  // execute command
+        puts("error: exec failed");
         return 0; // error, exec failed
 
     } else { // parent                              
@@ -728,6 +742,7 @@ int execute_output_redirection(char **tokens, struct exec_context ec) {
     int pid;
 
     if ((pid = fork()) < 0) {  
+        puts("error: fork failed");
         return 0; // error, fork failed
     }
     else if (pid == 0) { // fork successful, this is the child
@@ -740,6 +755,7 @@ int execute_output_redirection(char **tokens, struct exec_context ec) {
         close(outFile);
 
         execvp(tokens[0], tokens);  // execute command
+        puts("error: exec failed");
         return 0; // error, exec failed
 
     } else { // parent                              
@@ -763,7 +779,7 @@ int execute_output_redirection_append(char **tokens, struct exec_context ec) {
     int pid;
 
     if ((pid = fork()) < 0) {  
-        exit(1);
+        puts("error: fork failed");
         return 0; //error, fork failed
     }
     else if (pid == 0) { // fork successful, this is the child
@@ -776,7 +792,7 @@ int execute_output_redirection_append(char **tokens, struct exec_context ec) {
         close(outFile);
 
         execvp(tokens[0], tokens);  // execute command
-        exit(1);
+        puts("error: exec failed");
         return 0; //error, exec failed
 
     } else { // parent                              
@@ -800,7 +816,7 @@ int execute_input_redirection(char **tokens, struct exec_context ec) {
     int pid;
 
     if ((pid = fork()) < 0) {  
-        exit(1);
+        puts("error: fork failed");
         return 0; //error, fork failed
     }
     else if (pid == 0) { // fork successful, this is the child
@@ -813,7 +829,7 @@ int execute_input_redirection(char **tokens, struct exec_context ec) {
         close(inFile);
 
         execvp(tokens[0], tokens);  // execute command
-        exit(1);
+        puts("error: exec failed");
         return 0; //error, exec failed
 
     } else { // parent                              
@@ -839,7 +855,7 @@ int execute_input_output_redirection(char **tokens, struct exec_context ec) {
     int pid;
 
     if ((pid = fork()) < 0) {  
-        exit(1);
+        puts("error: fork failed");
         return 0; //error, fork failed
     }
     else if (pid == 0) { // fork successful, this is the child
@@ -857,7 +873,7 @@ int execute_input_output_redirection(char **tokens, struct exec_context ec) {
         close(outFile);
 
         execvp(tokens[0], tokens);  // execute command
-        exit(1);
+        puts("error: exec failed");
         return 0; //error, exec failed
 
     } else { // parent                              
@@ -883,13 +899,13 @@ int execute_background_execution(char **tokens, struct exec_context ec) {
     int pid;
 
     if ((pid = fork()) < 0) {  
-        exit(1);
+        puts("error: fork failed");
         return 0; // error, fork failed
 
     } 
     if (pid == 0) { // fork successful, this is the child
         execvp(tokens[0], tokens);  // execute command
-        exit(1);
+        puts("error: exec failed");
         return 0; //error, exec failed
     }
     
@@ -931,11 +947,13 @@ int execute_pipe(char **tokens, struct exec_context ec) {
 
     // create pipe
     if (pipe(fd) == -1){
+        puts("error: pipe failed");
         return 0; // error, pipe failed to create
     }
 
     // command1
     if ((pid1 = fork()) < 0){
+        puts("error: fork failed");
         return 0; // error, fork did not create
     }
 
@@ -950,12 +968,14 @@ int execute_pipe(char **tokens, struct exec_context ec) {
         execvp(command1[0], command1);
 
         // if this point is reached an error occurred
+        puts("error: exec failed");
         return 0; 
     
     }
 
     // command2
     if ((pid2 = fork()) < 0){
+        puts("error: fork failed");
         return 0; // error, fork failed
     }
 
@@ -970,15 +990,17 @@ int execute_pipe(char **tokens, struct exec_context ec) {
         execvp(command2[0], command2);
 
         // if this point is reached an error occurred
+        puts("error: exec failed");
         return 0;
     
     }
 
     // -1 signifies to wait for ALL children to finish
-    waitpid(-1, NULL, 0);
-
+    waitpid(pid1, NULL, 0);
     close(fd[0]);
     close(fd[1]);
+
+    waitpid(pid2, NULL, 0);
 
     // free memory used
     free(command1);
