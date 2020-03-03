@@ -68,11 +68,23 @@ int execute_output_redirection_append(char **tokens, struct exec_context ec);
 
 // initialize batch mode file
 FILE *batch;
+// initialize help file
+FILE *help;
 
 int main(int argc, char *argv[]) {
 
-    bool batch_mode = false;
+    // create help file
+    char cwd[100];
+    getcwd(cwd, sizeof(cwd));
+    char *help_file = strcat(cwd, "/README.md");
+    help = fopen(help_file, "r"); // open the help file in read mode
 
+    if (help == NULL) { // check that the file exists
+        puts("error: No such file or directory");
+        exit(0);
+    }
+
+    bool batch_mode = false;
     // check if a file was added to ./myshell
     if(argc == 2) {
         batch = fopen(argv[1], "r"); // open the input file in read mode
@@ -651,8 +663,15 @@ void execute_quit(char **tokens) {
 // prints the user manual
 void execute_help() {
 	
-	printf("\nuser manual goes here");
-    fflush(stdout);
+    char *line = NULL;
+    size_t size = 0;
+    int c = getline(&line, &size, help);   
+    
+    while(c != -1) {
+        printf("%s", line);
+        c = getline(&line, &size, help);
+
+    }
 }
 
 // execute commands with no I/O redirection, returns 0 if error occurs
