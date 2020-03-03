@@ -61,6 +61,7 @@ void execute_help();
 int execute_output_redirection(char **tokens, struct exec_context ec);
 int execute_input_redirection(char **tokens, struct exec_context ec);
 int execute_input_output_redirection(char **tokens, struct exec_context ec);
+int execute_input_output_append_redirection(char **tokens, struct exec_context ec);
 int execute_background_execution(char **tokens, struct exec_context ec);
 int execute_pipe(char **tokens, struct exec_context ec);
 int execute_output_redirection_append(char **tokens, struct exec_context ec);
@@ -688,7 +689,7 @@ int execute_IO(char **tokens, struct exec_context ec) {
         }
 
     // if there is only input redirection
-    } else if(ec.output_redirection_append == true) {
+    } else if(ec.output_redirection_append == true && ec.input_redirection == false) {
         if(!execute_output_redirection_append(tokens, ec)) {
             return 0; // error
         } else {
@@ -696,7 +697,7 @@ int execute_IO(char **tokens, struct exec_context ec) {
         }
 
     // if there is only input redirection
-    } else if(ec.input_redirection == true && ec.output_redirection == false) {
+    } else if(ec.input_redirection == true && ec.output_redirection == false && ec.output_redirection_append == false) {
         if(!execute_input_redirection(tokens, ec)) {
             return 0; // error
         } else {
@@ -706,6 +707,14 @@ int execute_IO(char **tokens, struct exec_context ec) {
     // if there is input and output redirection  
     } else if(ec.input_redirection == true && ec.output_redirection == true) {
         if(!execute_input_output_redirection(tokens, ec)) {
+            return 0; //error
+        } else {
+            return 1;
+        }
+
+    // if there is input and output append redirection  
+    } else if(ec.input_redirection == true && ec.output_redirection_append == true) {
+        if(!execute_input_output_append_redirection(tokens, ec)) {
             return 0; //error
         } else {
             return 1;
@@ -868,6 +877,51 @@ int execute_input_output_redirection(char **tokens, struct exec_context ec) {
         // create input and output files
         int inFile = open(ec.input_file, O_RDONLY);
         int outFile = open(ec.output_file, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU | S_IRWXG| S_IRWXO);
+
+        // replace stdin and stdout
+        dup2(inFile, 0); 
+        dup2(outFile, 1); 
+
+        // close duplicate file descriptors
+        close(inFile); 
+        close(outFile);
+
+        execvp(tokens[0], tokens);  // execute command
+        puts("error: exec failed");
+        exit(0);
+        return 0; //error, exec failed
+
+    } else { // parent                              
+        wait(NULL); // wait
+    }
+
+    return 1; // success
+
+}
+
+// command < file > file
+// returns 1 if successful
+int execute_input_output_append_redirection(char **tokens, struct exec_context ec) {
+
+    // null terminate the array
+    for(size_t i = 0; tokens[i] != NULL; i++) {
+        if((strcmp(tokens[i], "<") == 0)) {
+            tokens[i] = NULL;
+            break;
+        }
+    }
+
+    int pid;
+
+    if ((pid = fork()) < 0) {  
+        puts("error: fork failed");
+        return 0; //error, fork failed
+    }
+    else if (pid == 0) { // fork successful, this is the child
+
+        // create input and output files
+        int inFile = open(ec.input_file, O_RDONLY);
+        int outFile = open(ec.output_file, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU | S_IRWXG| S_IRWXO);
 
         // replace stdin and stdout
         dup2(inFile, 0); 
