@@ -1,3 +1,7 @@
+//Grace Sobrinski
+//3207 Project 2: Creating a Linux Shell
+//Section 004
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -131,8 +135,7 @@ int main(int argc, char *argv[]) {
 
         if(line[0] != '\n') { 
             tokenize(line, tokens);
-            if(!parse(tokens, ec)) {
-            }
+            parse(tokens, ec);
         }
 
         free(tokens);

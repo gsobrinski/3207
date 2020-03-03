@@ -1,3 +1,7 @@
+Grace Sobrinski, tuk01723, TUID: 915693998
+3207 Project 2: Creating a Linux Shell
+Section 004
+
 This is a simulation of a Linux shell.  A shell is a user interface that will
 allow you to access this system using some basic commands.  Notice that every
 time you hit enter, the shell displays a line of text. The name displayed 
