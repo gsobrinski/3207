@@ -5,19 +5,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
+#include <unistd.h>
 
 #define max_length 100
 #define max_size 100000
+#define max_queue_size 100
 
-// functions
+// dictionary 
 int get_word(char *word);
-int get_input(char* user_word);
 int search(char *word, int i);
 void print_dictionary();
 
+int get_input(char* user_word);
 
-FILE *words;
-char **dictionary;
+// connection queue (from textbook)
+void put(int socket);
+int get();
+
+
+FILE *words; // dictionary.txt
+char **dictionary; // dictionary data structure
+
+// connection queue
+int queue[100];
+int writePtr;
+int readPtr;
+int queue_size;
+pthread_mutex_t mutex;
+pthread_cond_t empty;
+pthread_cond_t fill;
+
 
 int main() {
 
@@ -115,4 +133,50 @@ int search(char *word, int i) {
     return 0; 
 
 }
+
+// add socket descriptor to the connection queue (taken from textbook)
+void put(int socket) {
+
+    pthread_mutex_lock(&mutex); // acquire lock
+
+    // initialize empty
+    if(pthread_cond_init(&empty, NULL) != 0) {
+        puts("error");
+    }
+
+    // if the connection queue is full, block thread
+    while (queue_size == max_queue_size){
+        pthread_cond_wait(&empty, &mutex);
+    }
+
+    queue[writePtr] = socket;
+    writePtr = (writePtr + 1) % max_queue_size;
+    queue_size++;
+    
+    // intialize fill
+    if(pthread_cond_init(&fill, NULL) != 0) {
+        puts("error");
+    }
+
+    // signal that socket has been filled and release lock
+    pthread_cond_signal(&fill);
+    pthread_mutex_unlock(&mutex);
+
+}
+
+// remove and return socket descriptor from the connection queue (taken from textbook)
+int get() {
+
+    pthread_mutex_lock(&mutex); // acquire lock
+
+    int socket = queue[readPtr];
+    readPtr = (readPtr + 1) % max_queue_size;
+    queue_size--;
+
+    pthread_mutex_unlock(&mutex); // release lock
+
+    return socket;
+
+}
+
 
