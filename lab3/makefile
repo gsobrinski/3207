@@ -2,5 +2,5 @@
 # 3207 Project 2: Creating a Linux Shell
 # Section 004
 
-shell: shell.c
+spellchecker: spellchecker.c
 	gcc -o spellchecker spellchecker.c
