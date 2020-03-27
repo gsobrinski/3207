@@ -13,9 +13,11 @@
 #define max_queue_size 100
 
 // dictionary 
+int init_dictionary();
 int get_word(char *word);
 int search(char *word, int i);
 void print_dictionary();
+int init_variables();
 
 int get_input(char* user_word);
 
@@ -39,7 +41,29 @@ pthread_cond_t fill;
 
 int main() {
 
-     words = fopen("dictionary.txt", "r"); // open the dictionary in read mode
+    char user_word[max_length];
+
+    int numWords = init_dictionary();
+
+    while(get_input(user_word)) {
+
+        // call search to check if the word is contained in the dictionary
+        if(search(user_word, numWords)) {
+            puts("OK");
+        } else {
+            puts("INCORRECT");
+        }
+    }
+
+    for(size_t i = 0; dictionary[i] != NULL; i++) {
+        free(dictionary[i]);
+    }
+    free(dictionary); // free allocated memory
+
+}
+
+int init_dictionary() {
+    words = fopen("dictionary.txt", "r"); // open the dictionary in read mode
 
     if (words == NULL) { // check that the file exists
         puts("error opening file");
@@ -47,7 +71,6 @@ int main() {
     }
 
     char word[max_length];
-    char user_word[max_length];
 
     dictionary = calloc(max_size, sizeof(char *));  // allocate dictionary 
 
@@ -59,22 +82,10 @@ int main() {
         i++;
     }
 
-    //print_dictionary();
+    print_dictionary();
 
-    while(get_input(user_word)) {
+    return i;
 
-        // call search to check if the word is contained in the dictionary
-        if(search(user_word, i)) {
-            puts("OK");
-        } else {
-            puts("INCORRECT");
-        }
-    }
-
-    for(size_t i = 0; dictionary[i] != NULL; i++) {
-        free(dictionary[i]);
-    }
-    free(dictionary); // free allocated memory
 
 }
 
@@ -101,6 +112,20 @@ int get_input(char* user_word) {
 void print_dictionary() {
     for(size_t i = 0; dictionary[i] != NULL; i++) {
         puts(dictionary[i]);
+    }
+}
+
+// initialize variables, return 0 if any errors
+int init_variables() {
+    // initialize cv
+    if(pthread_cond_init(&empty, NULL) != 0) {
+        puts("error");
+        return 0;
+    }
+
+    // intialize cv
+    if(pthread_cond_init(&fill, NULL) != 0) {
+        puts("error");
     }
 }
 
@@ -139,11 +164,6 @@ void put(int socket) {
 
     pthread_mutex_lock(&mutex); // acquire lock
 
-    // initialize empty
-    if(pthread_cond_init(&empty, NULL) != 0) {
-        puts("error");
-    }
-
     // if the connection queue is full, block thread
     while (queue_size == max_queue_size){
         pthread_cond_wait(&empty, &mutex);
@@ -153,11 +173,6 @@ void put(int socket) {
     writePtr = (writePtr + 1) % max_queue_size;
     queue_size++;
     
-    // intialize fill
-    if(pthread_cond_init(&fill, NULL) != 0) {
-        puts("error");
-    }
-
     // signal that socket has been filled and release lock
     pthread_cond_signal(&fill);
     pthread_mutex_unlock(&mutex);
