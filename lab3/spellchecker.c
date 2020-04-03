@@ -181,14 +181,14 @@ void *workerThread(void *arg){
 
 void *logThread(void *arg) {
     // create log file 
-    FILE *logFile = fopen("log.txt", "w"); 
+    FILE *logFile = fopen("log.txt", "a"); // open to append
 
     char *word = (char *)malloc(sizeof(char)*32); // allocate buffer
 
     while (1){
         // remove string from buffer
         word = get_l();
-        write(logFile, word, sizeof(word));
+        fprintf(logFile, "%s\n", word);
         free(word); 
     }
 }
