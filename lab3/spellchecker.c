@@ -153,10 +153,8 @@ void *workerThread(void *arg){
         char *response;
         char *word = (char *)malloc(sizeof(char)*32); // allocate buffer
 
-        puts("before");
         int sd = get_c();
-        puts("after");
-        while ( read(sd, word, sizeof(word)) > 0){
+        while ( read(sd, word, 32) > 0){
             
             // remove any trailing characters from the word
             word = format_word(word);
@@ -165,15 +163,17 @@ void *workerThread(void *arg){
             if (search(word, numWords)){
                 //strcat word and "OK"
                 puts("OK");
-                strcat(word, " OK");
+                strcat(word, " OK\n");
+                puts(word);
             } else {
                 puts("not found");
-                strcat(word, " not found");
+                strcat(word, " not found\n");
+                puts(word);
             }
-            write(sd, word, sizeof(word));
+            write(sd, word, strlen(word) + 1);
             // add to log queue
             put_l(word);
-            free(word);
+            word = (char *)malloc(sizeof(char)*32); // allocate buffer
         }
         close(sd);
     }
@@ -181,14 +181,13 @@ void *workerThread(void *arg){
 
 void *logThread(void *arg) {
     // create log file 
-    FILE *logFile = fopen("log.txt", "a"); // open to append
-
-    char *word = (char *)malloc(sizeof(char)*32); // allocate buffer
+    FILE *logFile = fopen("log.txt", "w");
 
     while (1){
         // remove string from buffer
-        word = get_l();
-        fprintf(logFile, "%s\n", word);
+        char *word = get_l();
+        fprintf(logFile, "%s", word);
+        fflush(logFile);
         free(word); 
     }
 }
@@ -198,20 +197,16 @@ char* format_word(char *word) {
 
     for(size_t i = 0; word[i] != '\0'; i++) {
         if (word[i] == '\n') {
-            puts("contains n");
-            word[i] == '\0';
+            word[i] = '\0';
             return word;
         } else if (word[i] == '\t') {
-            puts("contains t");
-            word[i] == '\0';
+            word[i] = '\0';
             return word;
         } else if (word[i] == '\r') {
-            puts("contains r");
-            word[i] == '\0';
+            word[i] = '\0';
             return word;
         } else if (word[i] == ' ') {
-            puts("contains space");
-            word[i] == '\0';
+            word[i] = '\0';
             return word;
         }
     }
@@ -234,6 +229,7 @@ int init_dictionary() {
     int i = 0;
     while(get_word(word) != -1) {
         dictionary[i] = (char *) malloc(100);
+        word[strlen(word) - 1] = '\0';
         strcpy(dictionary[i], word);
         i++;
     }
