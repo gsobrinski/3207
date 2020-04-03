@@ -3,4 +3,4 @@
 # Section 004
 
 spellchecker: spellchecker.c
-	gcc -o spellchecker spellchecker.c
+	gcc -o spellchecker spellchecker.c -pthread
