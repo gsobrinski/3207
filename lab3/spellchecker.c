@@ -35,7 +35,7 @@ int get_c();
 void put_l(char *word);
 char* get_l();
 
-
+char *filename; 
 FILE *words; // dictionary.txt
 char **dictionary; // dictionary data structure
 int numWords;
@@ -62,10 +62,44 @@ pthread_cond_t empty_c;
 pthread_cond_t fill_c;
 
 
-int main() {
+int main(int argc, char *argv[]) {
+
+    int portNumber;
+
+    if(argc == 1) {
+        portNumber = 8888;
+        filename = "dictionary.txt";
+    } else if (argc == 2) {
+        int num = atoi(argv[1]);
+        if (num > 0) {
+            portNumber = atoi(argv[1]);
+            printf("\nport number: %d\n", portNumber);
+            filename = "dictionary.txt";
+        } else {
+            portNumber = 8888;
+            filename = argv[1];
+            printf("\nfilename: %s\n", filename);
+        }
+    } else if (argc == 3) {
+        int num = atoi(argv[1]);
+        if (num > 0) {
+            portNumber = atoi(argv[1]);
+            filename = argv[2];
+
+            printf("\nport number: %d\n", portNumber);
+            printf("\nfilename: %s\n", filename);
+
+        } else {
+            portNumber = atoi(argv[2]);
+            filename = argv[1];
+
+            printf("\nport number: %d\n", portNumber);
+            printf("\nfilename: %s\n", filename);
+        }
+
+    }
 
     // network initialization
-    int portNumber = 8888;
     int socket_desc, new_socket, c;
     struct sockaddr_in server, client;
     char *message;
@@ -182,14 +216,19 @@ void *workerThread(void *arg){
 void *logThread(void *arg) {
     // create log file 
     FILE *logFile = fopen("log.txt", "w");
+    fclose(logFile);
+    logFile = fopen("log.txt", "a");
 
     while (1){
         // remove string from buffer
         char *word = get_l();
+        //fwrite(word, sizeof(word), 1, logFile);
         fprintf(logFile, "%s", word);
         fflush(logFile);
         free(word); 
     }
+
+    fclose(logFile);
 }
 
 // removes any trailing characters from word
@@ -214,7 +253,7 @@ char* format_word(char *word) {
 }
 
 int init_dictionary() {
-    words = fopen("dictionary.txt", "r"); // open the dictionary in read mode
+    words = fopen(filename, "r"); // open the dictionary in read mode
 
     if (words == NULL) { // check that the file exists
         puts("error opening file");
@@ -229,12 +268,14 @@ int init_dictionary() {
     int i = 0;
     while(get_word(word) != -1) {
         dictionary[i] = (char *) malloc(100);
-        word[strlen(word) - 1] = '\0';
+        if(word[strlen(word) - 1] == '\n') {
+            word[strlen(word) - 1] = '\0';
+        }
         strcpy(dictionary[i], word);
         i++;
     }
 
-    //print_dictionary();
+    fclose(words);
 
     return i; // return number of words
 
@@ -299,34 +340,15 @@ void print_dictionary() {
 }
 
 
-// uses binary search to look for a word in the dictionary, if found returns 1
+// searches for a word in the dictionary, if found returns 1
 int search(char *word, int i) {
-
-    int min = 0; 
-    int max = i-1; 
-
-    while (min <= max) { 
-        int mid = min + (max - min) / 2; 
-  
-        // check if word == mid
-        if (strcasecmp(dictionary[mid], word) == 0) { 
-            return 1; // word found, return 1
+    for(size_t j = 0; j < i; j++) {
+        if(strcasecmp(dictionary[j], word) == 0) {
+            return 1;
         }
-   
-        // if word is greater move min so we only search the right half of the dictionary
-        if (strcasecmp(dictionary[mid], word) < 0) {
-            min = mid + 1; 
-        }
-  
-        // else move max so we only search the left half
-        else {
-            max = mid - 1; 
-        }
-    } 
-  
-    // user_word not found
-    return 0; 
+    }
 
+    return 0;
 }
 
 // add socket descriptor to the connection queue (taken from textbook)
