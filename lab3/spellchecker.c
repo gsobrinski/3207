@@ -196,11 +196,9 @@ void *workerThread(void *arg){
             // search for the word
             if (search(word, numWords)){
                 //strcat word and "OK"
-                puts("OK");
                 strcat(word, " OK\n");
                 puts(word);
             } else {
-                puts("not found");
                 strcat(word, " not found\n");
                 puts(word);
             }
