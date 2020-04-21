@@ -9,12 +9,14 @@
 #include <pthread.h>
 #include <signal.h>
 #include <time.h>
+#include <errno.h>
+#include <assert.h>
 
 #define num_pids 8
 #define max_time 10
 
+
 struct shared_val {
-    int value;
     int sigusr1_sent;
     int sigusr1_received;
     int sigusr2_sent;
@@ -32,13 +34,14 @@ void block_sigusr1();
 void block_sigusr2();
 
 // init functions
-int randNum(int min, int max);
+double randNum(int min, int max);
 int randSignal();
-int sleep_milli(long double given_time);
+int sleep_milli(long given_time);
 int init_mutex();
 
 void signal_generator();
 void signal_handler(int signal);
+void signal_handler_main(int signal);
 void signal_reporter();
 void print_results();
 
@@ -54,7 +57,11 @@ int main() {
     assert(shm_id >= 0); // error check memory creation
     shm_ptr = (struct shared_val *) shmat(shm_id, NULL, 0); // attach memory
     assert(shm_ptr != (struct shared_val *) -1); // error check memory attachment
-    shm_ptr->value = 0; // set value in shared memory
+
+    shm_ptr->sigusr1_sent = 0;
+    shm_ptr->sigusr1_received = 0;
+    shm_ptr->sigusr2_sent = 0;
+    shm_ptr->sigusr2_received = 0;
 
     init_mutex(); // initialize mutex
     block_sigusr();
@@ -63,17 +70,14 @@ int main() {
         
         PIDs[i] = fork();
 
-        unblock_sigusr();
-
         if (PIDs[i] < 0) {
             puts("fork failed");
             exit(0);
 
         } else if (PIDs[i] == 0) { // child
 
-            PIDs[i] = getpid();
-            printf("\nPIDs[%lu] = %d\n", i, PIDs[i]);
-            fflush(stdout);
+            //PIDs[i] = getpid();
+            //printf("\nPIDs[%lu] = %d\n", i, PIDs[i]);
 
             if(i == 0 || i == 1 || i == 2) { // signal generating process
                 signal_generator();
@@ -86,7 +90,7 @@ int main() {
                 // set signal_handler to receive SIGUSR1
                 signal(SIGUSR1, signal_handler);
                 // call signal handler function with SIGUSR1
-                signal_handler(SIGUSR1); 
+                signal_handler_main(SIGUSR1); 
 
             } else if (i == 5 || i == 6) { // signal handling process for SIGUSR2
                 // unblock
@@ -96,29 +100,24 @@ int main() {
                 // set signal_handler to receive SIGUSR2
                 signal(SIGUSR2, signal_handler);
                 // call signal handler function with SIGUSR2
-                signal_handler(SIGUSR2); 
+                signal_handler_main(SIGUSR2); 
             
             } else { // reporting process
                 // unblock
                 unblock_sigusr();
                 // set signal_handler to receive SIGUSR1 and SIGUSR2
-                signal(SIGUSR1, signal_handler);
-                signal(SIGUSR2, signal_handler);
+                signal(SIGUSR1, signal_reporter);
+                signal(SIGUSR2, signal_reporter);
                 // call signal reporting function
                 signal_reporter();
             }
         }
     }
-    
-    print_results();
 
-    // wait for all children to complete
-    int status;
-    int n = num_pids;
-    while (n > 0) {
-        pid = wait(&status);
-        --n; 
-        shmdt(shm_ptr); // detach memory before exiting
+    sleep(10);
+    puts("killing children");
+    for (int i = 0; i < 8; i++){
+        kill(PIDs[i], SIGTERM);
     }
 
     print_results();
@@ -139,7 +138,9 @@ void block_sigusr() {
 void unblock_sigusr() {
     sigset_t sigset;
     sigemptyset(&sigset); // initalize set to empty
-    sigprocmask(SIG_BLOCK, &sigset, NULL); // modify mask
+    sigaddset(&sigset, SIGUSR1); // add SIGUSR1 to set
+    sigaddset(&sigset, SIGUSR2); // add SIGUSR2 to set
+    sigprocmask(SIG_UNBLOCK, &sigset, NULL); // modify mask
 }
 
 void block_sigusr1() {
@@ -158,8 +159,9 @@ void block_sigusr2() {
 }
 
 // returns a random number between min and max
-int randNum(int min, int max) {
-    return (rand() % (max - min + 1)) + min;
+double randNum(int min, int max) {
+    long interval = (long) ((rand() % (max - min + 1)) + min);
+    return interval;
 }
 
 // randomly returns either SIGUSR1 or SIGUSR2
@@ -174,21 +176,21 @@ int randSignal() {
 }
 
 // sleeps for a given number of milliseconds, returns 1 if successful
-int sleep_milli(long double given_time) {
+int sleep_milli(long given_time) {
 
-    // nanosleep returns a value < 0 if there is an error
-    // sleeps from 0 to given_time
-    if(nanosleep((const struct timespec[]){{0, given_time}}, NULL) < 0 ) { 
-        printf("\nnanosleep failed");
-        return 0;
-    }
+    int ret;
+    struct timespec ts;
 
-   // nanosleep successful
-   return 1;
+    assert(given_time >= 0);
+    ts.tv_sec = given_time / 1000;
+    ts.tv_nsec = (given_time % 1000) * 1000000;
+    do {
+        ret = nanosleep(&ts, &ts);
+    } while (ret && errno == EINTR);
 
 }
 
-int init_mutex() {
+int init_mutex() { 
     // init mutex
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
@@ -200,11 +202,12 @@ int init_mutex() {
 // increments signal sent counters
 void signal_generator() {
 
-	while (total_time < max_time) {    
+	while (1) {    
 
-        int rand_interval = randNum(.01, .1); // generate random interval
-        total_time += rand_interval; // add rand_interval to the total runtime
-        sleep_milli(rand_interval * 1000); // sleep random interval
+        double rand_interval = randNum(10, 100); // generate random interval
+        //printf("\nrand interval: %lf", rand_interval);
+        //total_time += rand_interval; // add rand_interval to the total runtime
+        sleep_milli(rand_interval); // sleep random interval
 
         int signal = randSignal(); // randomly choose between SIGUSR1 or SIGUSR2
         kill(0, signal); // send that signal to all children
@@ -236,6 +239,7 @@ void signal_generator() {
 
 // increments signal received counters 
 void signal_handler(int signal) { 
+
     if (signal == SIGUSR1){ 
 
         //acquire lock 
@@ -248,7 +252,7 @@ void signal_handler(int signal) {
 
     } else { // SIGUSR2
 
-         //acquire lock 
+        //acquire lock 
         pthread_mutex_lock(&(shm_ptr->mutex));
 
         shm_ptr->sigusr2_received++; //increment signal counter
@@ -258,8 +262,16 @@ void signal_handler(int signal) {
 
     }
 
-    exit(0);
 }
+
+void signal_handler_main(int signal) {
+
+    while(1) {
+        sleep(1);
+    }
+
+}
+
 
 void signal_reporter() {
     exit(0);
@@ -268,5 +280,6 @@ void signal_reporter() {
 void print_results() {
     printf("\nsigusr1_sent: %d\nsigusr2_sent: %d", shm_ptr->sigusr1_sent, shm_ptr->sigusr2_sent);
     printf("\nsigusr1_received: %d\nsigusr2_received: %d", shm_ptr->sigusr1_received, shm_ptr->sigusr2_received);
+    fflush(stdout);
 
 }
