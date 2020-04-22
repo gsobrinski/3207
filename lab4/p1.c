@@ -14,15 +14,28 @@
 
 #define num_pids 8
 #define max_time 10
+#define SIGUSR1 10
+#define SIGUSR2 12
+#define SIGTERM 15
 
-
+// shared memory struct
 struct shared_val {
     int sigusr1_sent;
     int sigusr1_received;
     int sigusr2_sent;
     int sigusr2_received;
+
+    int sigusr1_report_received;
+    int sigusr2_report_received;
+
     pthread_mutex_t mutex;
 }; 
+
+// reporting process struct
+struct signal_time {
+    int signal;
+    int time;
+};
 
 struct shared_val *shm_ptr;
 pthread_mutexattr_t attr;
@@ -39,11 +52,19 @@ int randSignal();
 int sleep_milli(long given_time);
 int init_mutex();
 
+// signal generator/handlers
 void signal_generator();
 void signal_handler(int signal);
-void signal_handler_main(int signal);
-void signal_reporter();
+void signal_handler_main();
+
+// signal reporting functions
+void signal_reporter(int signal);
+void signal_reporter_main();
+int get_time();
+void print_current_time();
+void print_avg_time_gap();
 void print_results();
+struct signal_time st_array[10];
 
 int PIDs[num_pids]; // process ID array
 int total_time;
@@ -62,6 +83,8 @@ int main() {
     shm_ptr->sigusr1_received = 0;
     shm_ptr->sigusr2_sent = 0;
     shm_ptr->sigusr2_received = 0;
+    shm_ptr->sigusr1_report_received = 0;
+    shm_ptr->sigusr2_report_received = 0;
 
     init_mutex(); // initialize mutex
     block_sigusr();
@@ -90,7 +113,7 @@ int main() {
                 // set signal_handler to receive SIGUSR1
                 signal(SIGUSR1, signal_handler);
                 // call signal handler function with SIGUSR1
-                signal_handler_main(SIGUSR1); 
+                signal_handler_main(); 
 
             } else if (i == 5 || i == 6) { // signal handling process for SIGUSR2
                 // unblock
@@ -100,16 +123,16 @@ int main() {
                 // set signal_handler to receive SIGUSR2
                 signal(SIGUSR2, signal_handler);
                 // call signal handler function with SIGUSR2
-                signal_handler_main(SIGUSR2); 
+                signal_handler_main(); 
             
             } else { // reporting process
                 // unblock
                 unblock_sigusr();
-                // set signal_handler to receive SIGUSR1 and SIGUSR2
+                // set signal_reporter to receive SIGUSR1 and SIGUSR2
                 signal(SIGUSR1, signal_reporter);
                 signal(SIGUSR2, signal_reporter);
                 // call signal reporting function
-                signal_reporter();
+                signal_reporter_main();
             }
         }
     }
@@ -119,8 +142,6 @@ int main() {
     for (int i = 0; i < 8; i++){
         kill(PIDs[i], SIGTERM);
     }
-
-    print_results();
 
     exit(0);
     
@@ -264,7 +285,8 @@ void signal_handler(int signal) {
 
 }
 
-void signal_handler_main(int signal) {
+// signal handler process 
+void signal_handler_main() {
 
     while(1) {
         sleep(1);
@@ -272,14 +294,94 @@ void signal_handler_main(int signal) {
 
 }
 
+void signal_reporter(int signal) {
 
-void signal_reporter() {
-    exit(0);
+    static int i = 0;
+
+    // every 10 signals
+    if(i == 10) {
+        print_current_time();
+        print_results();
+        print_avg_time_gap();
+        i = 0;
+    }
+
+    if(signal == SIGUSR1) { // SIGUSR1
+        
+        st_array[i].time = get_time();
+        st_array[i].signal = SIGUSR1;
+
+        // increment counter
+        shm_ptr->sigusr1_report_received++;
+
+    } else { // SIGUSR2
+
+        st_array[i].time = get_time();
+        st_array[i].signal = SIGUSR2;
+
+        // increment counter
+        shm_ptr->sigusr2_report_received++;    
+    }
+
+    i++;
+
+}
+
+// signal repoting process 
+void signal_reporter_main() {
+
+    while(1) {
+        sleep(1);
+    }
+}
+
+int get_time() {
+    time_t rawtime;
+    struct tm * timeinfo;
+    time ( &rawtime );
+    timeinfo = localtime ( &rawtime );
+    //printf ("\ncurrent system time: %d:%d:%d", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+    return timeinfo->tm_sec;
+}
+
+void print_current_time() {
+    time_t rawtime;
+    struct tm * timeinfo;
+    time ( &rawtime );
+    timeinfo = localtime ( &rawtime );
+    printf ("\n\ncurrent system time: %d:%d:%d", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+}
+
+void print_avg_time_gap() {
+
+    int num_1 = 0; 
+    int num_2 = 0;
+    int total_time_1 = 0;
+    int total_time_2 = 0;
+
+    for(size_t i = 0; i < 10; i++) {
+        if(st_array[i].signal == SIGUSR1) {
+            num_1++;
+            total_time_1 += st_array[i].time;
+        } else {
+            num_2++;
+            total_time_2 += st_array[i].time;
+        }
+    }
+
+    //printf("\ntotal: %d total time: %d", num_1, total_time_1);
+
+    double avg_1 = total_time_1/num_1;
+    double avg_2 = total_time_2/num_2;
+
+    printf("\naverage time between SIGUSR1: %f\naverage time between SIGUSR2: %f", avg_1, avg_2);
+
 }
 
 void print_results() {
     printf("\nsigusr1_sent: %d\nsigusr2_sent: %d", shm_ptr->sigusr1_sent, shm_ptr->sigusr2_sent);
     printf("\nsigusr1_received: %d\nsigusr2_received: %d", shm_ptr->sigusr1_received, shm_ptr->sigusr2_received);
+    printf("\nsigusr1_report_received: %d\nsigusr2_report_received: %d", shm_ptr->sigusr1_report_received, shm_ptr->sigusr2_report_received);
     fflush(stdout);
 
 }
