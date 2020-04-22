@@ -27,6 +27,7 @@ struct shared_val {
 
     int sigusr1_report_received;
     int sigusr2_report_received;
+    int signal_counter;
 
     pthread_mutex_t mutex;
 }; 
@@ -85,6 +86,7 @@ int main() {
     shm_ptr->sigusr2_received = 0;
     shm_ptr->sigusr1_report_received = 0;
     shm_ptr->sigusr2_report_received = 0;
+    shm_ptr->signal_counter = 0;
 
     init_mutex(); // initialize mutex
     block_sigusr();
@@ -98,9 +100,6 @@ int main() {
             exit(0);
 
         } else if (PIDs[i] == 0) { // child
-
-            //PIDs[i] = getpid();
-            //printf("\nPIDs[%lu] = %d\n", i, PIDs[i]);
 
             if(i == 0 || i == 1 || i == 2) { // signal generating process
                 signal_generator();
@@ -142,7 +141,8 @@ int main() {
     for (int i = 0; i < 8; i++){
         kill(PIDs[i], SIGTERM);
     }
-
+    
+    shmdt(shm_ptr);
     exit(0);
     
 }
@@ -227,7 +227,6 @@ void signal_generator() {
 
         double rand_interval = randNum(10, 100); // generate random interval
         //printf("\nrand interval: %lf", rand_interval);
-        //total_time += rand_interval; // add rand_interval to the total runtime
         sleep_milli(rand_interval); // sleep random interval
 
         int signal = randSignal(); // randomly choose between SIGUSR1 or SIGUSR2
@@ -255,7 +254,6 @@ void signal_generator() {
         } 
     }
 
-    exit(0);
 }
 
 // increments signal received counters 
@@ -296,42 +294,38 @@ void signal_handler_main() {
 
 void signal_reporter(int signal) {
 
-    static int i = 0;
-
-    // every 10 signals
-    if(i == 10) {
-        print_current_time();
-        print_results();
-        print_avg_time_gap();
-        i = 0;
-    }
-
     if(signal == SIGUSR1) { // SIGUSR1
         
-        st_array[i].time = get_time();
-        st_array[i].signal = SIGUSR1;
+        st_array[shm_ptr->signal_counter].time = get_time();
+        st_array[shm_ptr->signal_counter].signal = SIGUSR1;
 
         // increment counter
         shm_ptr->sigusr1_report_received++;
 
     } else { // SIGUSR2
 
-        st_array[i].time = get_time();
-        st_array[i].signal = SIGUSR2;
+        st_array[shm_ptr->signal_counter].time = get_time();
+        st_array[shm_ptr->signal_counter].signal = SIGUSR2;
 
         // increment counter
         shm_ptr->sigusr2_report_received++;    
     }
 
-    i++;
+    shm_ptr->signal_counter++;
 
 }
 
-// signal repoting process 
+// signal reporting process 
 void signal_reporter_main() {
 
     while(1) {
-        sleep(1);
+        // every 10 signals
+        if(shm_ptr->signal_counter == 10) {
+            print_current_time();
+            print_results();
+            print_avg_time_gap();
+            shm_ptr->signal_counter = 0;
+        }
     }
 }
 
@@ -358,14 +352,20 @@ void print_avg_time_gap() {
     int num_2 = 0;
     int total_time_1 = 0;
     int total_time_2 = 0;
+    int prev_time_1 = 0;
+    int prev_time_2 = 0;
 
     for(size_t i = 0; i < 10; i++) {
+
         if(st_array[i].signal == SIGUSR1) {
             num_1++;
-            total_time_1 += st_array[i].time;
+            total_time_1 += st_array[i].time - prev_time_1;
+            prev_time_1 = st_array[i].time;
         } else {
             num_2++;
-            total_time_2 += st_array[i].time;
+            total_time_2 += st_array[i].time - prev_time_2;
+            prev_time_2 = st_array[i].time;
+
         }
     }
 
@@ -373,7 +373,6 @@ void print_avg_time_gap() {
 
     double avg_1 = total_time_1/num_1;
     double avg_2 = total_time_2/num_2;
-
     printf("\naverage time between SIGUSR1: %f\naverage time between SIGUSR2: %f", avg_1, avg_2);
 
 }
