@@ -125,18 +125,13 @@ int main() {
                 signal_handler_main(); 
             
             } else { // reporting process
-                // unblock
-                unblock_sigusr();
-                // set signal_reporter to receive SIGUSR1 and SIGUSR2
-                signal(SIGUSR1, signal_reporter);
-                signal(SIGUSR2, signal_reporter);
                 // call signal reporting function
                 signal_reporter_main();
             }
         }
     }
 
-    sleep(10);
+    sleep(30);
     puts("killing children");
     for (int i = 0; i < 8; i++){
         kill(PIDs[i], SIGTERM);
@@ -225,6 +220,8 @@ void signal_generator() {
 
 	while (1) {    
 
+        sleep(1);
+
         double rand_interval = randNum(10, 100); // generate random interval
         //printf("\nrand interval: %lf", rand_interval);
         sleep_milli(rand_interval); // sleep random interval
@@ -292,33 +289,22 @@ void signal_handler_main() {
 
 }
 
-void signal_reporter(int signal) {
-
-    if(signal == SIGUSR1) { // SIGUSR1
-        
-        st_array[shm_ptr->signal_counter].time = get_time();
-        st_array[shm_ptr->signal_counter].signal = SIGUSR1;
-
-        // increment counter
-        shm_ptr->sigusr1_report_received++;
-
-    } else { // SIGUSR2
-
-        st_array[shm_ptr->signal_counter].time = get_time();
-        st_array[shm_ptr->signal_counter].signal = SIGUSR2;
-
-        // increment counter
-        shm_ptr->sigusr2_report_received++;    
-    }
-
-    shm_ptr->signal_counter++;
-
-}
 
 // signal reporting process 
 void signal_reporter_main() {
 
+    sigset_t sigset;
+    int return_val = 0;
+    int signal;
+    sigemptyset(&sigset);
+    // initalize set to empty
+    sigaddset(&sigset, SIGUSR1);
+    sigaddset(&sigset, SIGUSR2);
+
     while(1) {
+
+        return_val = sigwait(&sigset, &signal);
+
         // every 10 signals
         if(shm_ptr->signal_counter == 10) {
             print_current_time();
@@ -326,6 +312,25 @@ void signal_reporter_main() {
             print_avg_time_gap();
             shm_ptr->signal_counter = 0;
         }
+
+        if(signal == SIGUSR1) { // SIGUSR1
+        
+        st_array[shm_ptr->signal_counter].time = get_time();
+        st_array[shm_ptr->signal_counter].signal = SIGUSR1;
+
+        // increment counter
+        shm_ptr->sigusr1_report_received++;
+
+        } else { // SIGUSR2
+
+            st_array[shm_ptr->signal_counter].time = get_time();
+            st_array[shm_ptr->signal_counter].signal = SIGUSR2;
+
+            // increment counter
+            shm_ptr->sigusr2_report_received++;    
+        }
+        shm_ptr->signal_counter++;
+        
     }
 }
 
@@ -357,22 +362,33 @@ void print_avg_time_gap() {
 
     for(size_t i = 0; i < 10; i++) {
 
-        if(st_array[i].signal == SIGUSR1) {
-            num_1++;
-            total_time_1 += st_array[i].time - prev_time_1;
-            prev_time_1 = st_array[i].time;
-        } else {
-            num_2++;
-            total_time_2 += st_array[i].time - prev_time_2;
-            prev_time_2 = st_array[i].time;
+        if(st_array[i].signal == SIGUSR1) { // SIGUSR1
 
+            if(num_1 == 0) {
+                prev_time_1 = st_array[i].time;
+                i++;
+            }
+            num_1++;
+            int temp = st_array[i].time - prev_time_1;
+            total_time_1 += temp;
+            prev_time_1 = st_array[i].time;
+        
+        } else { // SIGUSR2
+            if(num_2 == 0) {
+                prev_time_2 = st_array[i].time;
+                i++;
+            }
+            num_2++;
+            int temp = st_array[i].time - prev_time_2;
+            total_time_2 += temp;
+            prev_time_2 = st_array[i].time;
         }
     }
+    //printf("\ntotal_1: %d total_time_1: %d", num_1, total_time_1);
+    //printf("\ntotal_2: %d total_time_2: %d", num_2, total_time_2);
 
-    //printf("\ntotal: %d total time: %d", num_1, total_time_1);
-
-    double avg_1 = total_time_1/num_1;
-    double avg_2 = total_time_2/num_2;
+    double avg_1 = total_time_1/(double)num_1;
+    double avg_2 = total_time_2/(double)num_2;
     printf("\naverage time between SIGUSR1: %f\naverage time between SIGUSR2: %f", avg_1, avg_2);
 
 }
