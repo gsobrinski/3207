@@ -29,6 +29,8 @@ struct shared_val {
     int sigusr2_report_received;
     int signal_counter;
 
+    int total_signals;
+
     pthread_mutex_t mutex;
 }; 
 
@@ -38,8 +40,7 @@ struct signal_time {
     int time;
 };
 
-struct shared_val *shm_ptr;
-pthread_mutexattr_t attr;
+struct shared_val shm_ptr;
 
 // signal masking functions
 void block_sigusr();
@@ -71,13 +72,15 @@ pthread_t threads[N_THREADS];
 
 int main() {
 
-    shm_ptr->sigusr1_sent = 0;
-    shm_ptr->sigusr1_received = 0;
-    shm_ptr->sigusr2_sent = 0;
-    shm_ptr->sigusr2_received = 0;
-    shm_ptr->sigusr1_report_received = 0;
-    shm_ptr->sigusr2_report_received = 0;
-    shm_ptr->signal_counter = 0;
+    // initialize struct
+    shm_ptr.sigusr1_sent = 0;
+    shm_ptr.sigusr1_received = 0;
+    shm_ptr.sigusr2_sent = 0;
+    shm_ptr.sigusr2_received = 0;
+    shm_ptr.sigusr1_report_received = 0;
+    shm_ptr.sigusr2_report_received = 0;
+    shm_ptr.signal_counter = 0;
+    shm_ptr.total_signals = 0;
 
     init_mutex(); // initialize mutex
     block_sigusr();
@@ -126,10 +129,19 @@ int main() {
         }
     }
 
-    sleep(30);
-    exit(0);
+    //sleep(30);
+    //exit(0);
+
+    while(1) {
+        if(shm_ptr.total_signals >= 10000) {
+            printf("\ntotal signals: %d", shm_ptr.total_signals);
+            exit(0);
+        }
+        sleep(0.1);
+    }
     
 }
+
 
 void block_sigusr() {
     sigset_t sigset;
@@ -197,7 +209,7 @@ int sleep_milli(long given_time) {
 
 int init_mutex() { 
     // init mutex
-    if(pthread_mutex_init(&(shm_ptr->mutex), NULL) != 0) {
+    if(pthread_mutex_init(&(shm_ptr.mutex), NULL) != 0) {
         puts("error");
         return 0;
     }
@@ -210,7 +222,7 @@ void *signal_generator(void *arg) {
 
 	while (1) {    
 
-        sleep(1);
+        sleep(0.5);
 
         double rand_interval = randNum(10, 100); // generate random interval
         sleep_milli(rand_interval); // sleep random interval
@@ -222,25 +234,28 @@ void *signal_generator(void *arg) {
             pthread_kill(threads[i], signal);
         }
 
+
         if (signal == SIGUSR1){ // SIGUSR1
             
             //acquire lock 
-            pthread_mutex_lock(&(shm_ptr->mutex));
+            pthread_mutex_lock(&(shm_ptr.mutex));
 
-            shm_ptr->sigusr1_sent++; //increment signal counter
+            shm_ptr.sigusr1_sent++; //increment signal counter
+            shm_ptr.total_signals++;
             
             // release lock
-            pthread_mutex_unlock(&(shm_ptr->mutex));
+            pthread_mutex_unlock(&(shm_ptr.mutex));
 
         } else { // SIGUSR2
 
             //acquire lock 
-            pthread_mutex_lock(&(shm_ptr->mutex));
+            pthread_mutex_lock(&(shm_ptr.mutex));
 
-            shm_ptr->sigusr2_sent++; //increment signal counter
+            shm_ptr.sigusr2_sent++; //increment signal counter
+            shm_ptr.total_signals++;
             
             // release lock
-            pthread_mutex_unlock(&(shm_ptr->mutex));
+            pthread_mutex_unlock(&(shm_ptr.mutex));
         } 
     }
 
@@ -260,12 +275,13 @@ void *sigusr1_handler(void *arg) {
         return_val = sigwait(&sigset, &signal);
 
         //acquire lock 
-        pthread_mutex_lock(&(shm_ptr->mutex));
+        pthread_mutex_lock(&(shm_ptr.mutex));
 
-        shm_ptr->sigusr1_received++; //increment signal counter
+        shm_ptr.sigusr1_received++; //increment signal counter
+        shm_ptr.total_signals++;
         
         // release lock
-        pthread_mutex_unlock(&(shm_ptr->mutex));
+        pthread_mutex_unlock(&(shm_ptr.mutex));
 
     }
 
@@ -285,12 +301,13 @@ void *sigusr2_handler(void *arg) {
         return_val = sigwait(&sigset, &signal);
 
         //acquire lock 
-        pthread_mutex_lock(&(shm_ptr->mutex));
+        pthread_mutex_lock(&(shm_ptr.mutex));
 
-        shm_ptr->sigusr2_received++; //increment signal counter
+        shm_ptr.sigusr2_received++; //increment signal counter
+        shm_ptr.total_signals++;
         
         // release lock
-        pthread_mutex_unlock(&(shm_ptr->mutex));
+        pthread_mutex_unlock(&(shm_ptr.mutex));
     }
 }
 
@@ -311,30 +328,30 @@ void *signal_reporter_main(void *arg) {
         return_val = sigwait(&sigset, &signal);
 
         // every 10 signals
-        if(shm_ptr->signal_counter == 10) {
+        if(shm_ptr.signal_counter == 10) {
             print_current_time();
             print_results();
             print_avg_time_gap();
-            shm_ptr->signal_counter = 0;
+            shm_ptr.signal_counter = 0;
         }
+
+        shm_ptr.total_signals++;
 
         if(signal == SIGUSR1) { // SIGUSR1
-        
-        st_array[shm_ptr->signal_counter].time = get_time();
-        st_array[shm_ptr->signal_counter].signal = SIGUSR1;
-
-        // increment counter
-        shm_ptr->sigusr1_report_received++;
-
-        } else { // SIGUSR2
-
-            st_array[shm_ptr->signal_counter].time = get_time();
-            st_array[shm_ptr->signal_counter].signal = SIGUSR2;
+            st_array[shm_ptr.signal_counter].time = get_time();
+            st_array[shm_ptr.signal_counter].signal = SIGUSR1;
 
             // increment counter
-            shm_ptr->sigusr2_report_received++;    
+            shm_ptr.sigusr1_report_received++;
+
+        } else { // SIGUSR2
+            st_array[shm_ptr.signal_counter].time = get_time();
+            st_array[shm_ptr.signal_counter].signal = SIGUSR2;
+
+            // increment counter
+            shm_ptr.sigusr2_report_received++;    
         }
-        shm_ptr->signal_counter++;
+        shm_ptr.signal_counter++;
         
     }
 }
@@ -399,9 +416,9 @@ void print_avg_time_gap() {
 }
 
 void print_results() {
-    printf("\nsigusr1_sent: %d\nsigusr2_sent: %d", shm_ptr->sigusr1_sent, shm_ptr->sigusr2_sent);
-    printf("\nsigusr1_received: %d\nsigusr2_received: %d", shm_ptr->sigusr1_received, shm_ptr->sigusr2_received);
-    printf("\nsigusr1_report_received: %d\nsigusr2_report_received: %d", shm_ptr->sigusr1_report_received, shm_ptr->sigusr2_report_received);
+    printf("\nsigusr1_sent: %d\nsigusr2_sent: %d", shm_ptr.sigusr1_sent, shm_ptr.sigusr2_sent);
+    printf("\nsigusr1_received: %d\nsigusr2_received: %d", shm_ptr.sigusr1_received, shm_ptr.sigusr2_received);
+    printf("\nsigusr1_report_received: %d\nsigusr2_report_received: %d", shm_ptr.sigusr1_report_received, shm_ptr.sigusr2_report_received);
     fflush(stdout);
 
 }
