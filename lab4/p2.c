@@ -12,7 +12,7 @@
 #include <errno.h>
 #include <assert.h>
 
-#define num_pids 8
+#define N_THREADS 8
 #define max_time 10
 #define SIGUSR1 10
 #define SIGUSR2 12
@@ -28,8 +28,6 @@ struct shared_val {
     int sigusr1_report_received;
     int sigusr2_report_received;
     int signal_counter;
-
-    int total_signals;
 
     pthread_mutex_t mutex;
 }; 
@@ -54,32 +52,24 @@ double randNum(int min, int max);
 int randSignal();
 int sleep_milli(long given_time);
 int init_mutex();
-void exit_program();
 
 // signal generator/handlers
-void signal_generator();
-void signal_handler(int signal);
-void signal_handler_main();
+void *signal_generator(void *arg);
+void *sigusr1_handler(void *arg);
+void *sigusr2_handler(void *arg);
+
 
 // signal reporting functions
-int signal_reporter_main();
+void *signal_reporter_main(void *arg);
 int get_time();
 void print_current_time();
 void print_avg_time_gap();
 void print_results();
 struct signal_time st_array[10];
-
-int PIDs[num_pids]; // process ID array
+// array which holds worker threads
+pthread_t threads[N_THREADS];
 
 int main() {
-
-    int shm_id;
-    pid_t pid;
-    
-    shm_id = shmget(IPC_PRIVATE, sizeof(struct shared_val), IPC_CREAT | 0666); // created shared mem region
-    assert(shm_id >= 0); // error check memory creation
-    shm_ptr = (struct shared_val *) shmat(shm_id, NULL, 0); // attach memory
-    assert(shm_ptr != (struct shared_val *) -1); // error check memory attachment
 
     shm_ptr->sigusr1_sent = 0;
     shm_ptr->sigusr1_received = 0;
@@ -92,78 +82,61 @@ int main() {
     init_mutex(); // initialize mutex
     block_sigusr();
 
-    for(size_t i = 0; i < num_pids; i++) {
+    for(size_t i = 0; i < N_THREADS; i++) {
+
+        if(i == 0 || i == 1 || i == 2) { // signal generating process
+            // create thread
+            if (pthread_create(&threads[i],
+                    NULL,
+                    signal_generator,
+                    NULL) != 0){
+                printf("Error: Failed to create thread\n");
+                exit(1);
+            }
+
+        } else if (i == 3 || i == 4) { // signal handling process for SIGUSR1
+            //create thread
+            if (pthread_create(&threads[i],
+                    NULL,
+                    sigusr1_handler,
+                    NULL) != 0){
+                printf("Error: Failed to create thread\n");
+                exit(1);
+            }
+
+        } else if (i == 5 || i == 6) { // signal handling process for SIGUSR2
+            // create thread
+            if (pthread_create(&threads[i],
+                    NULL,
+                    sigusr2_handler,
+                    NULL) != 0){
+                printf("Error: Failed to create thread\n");
+                exit(1);
+            } 
         
-        PIDs[i] = fork();
-
-        if (PIDs[i] < 0) {
-            puts("fork failed");
-            exit(0);
-
-        } else if (PIDs[i] == 0) { // child
-
-            if(i == 0 || i == 1 || i == 2) { // signal generating process
-                signal_generator();
-
-            } else if (i == 3 || i == 4) { // signal handling process for SIGUSR1
-                // unblock
-                unblock_sigusr();
-                // block SIGUSR2
-                block_sigusr2();
-                // set signal_handler to receive SIGUSR1
-                signal(SIGUSR1, signal_handler);
-                // call signal handler function with SIGUSR1
-                signal_handler_main(); 
-
-            } else if (i == 5 || i == 6) { // signal handling process for SIGUSR2
-                // unblock
-                unblock_sigusr();
-                // block SIGUSR1
-                block_sigusr1();
-                // set signal_handler to receive SIGUSR2
-                signal(SIGUSR2, signal_handler);
-                // call signal handler function with SIGUSR2
-                signal_handler_main(); 
-            
-            } else { // reporting process
-                // call signal reporting function
-                if(signal_reporter_main() == -1) {
-                    
-                }
+        } else { // reporting process
+            // call signal reporting function
+            if (pthread_create(&threads[i],
+                    NULL,
+                    signal_reporter_main,
+                    NULL) != 0){
+                printf("Error: Failed to create thread\n");
+                exit(1);
             }
         }
     }
 
     sleep(30);
-    exit_program();
-
-    while(1) {
-        if(shm_ptr->total_signals >= 10000) {
-            exit_program();
-        }
-        sleep(0.1);
-    }
-    
-}
-
-void exit_program() {
-    puts("killing children");
-    for (int i = 0; i < 8; i++){
-        kill(PIDs[i], SIGTERM);
-    }
-    
-    shmdt(shm_ptr);
     exit(0);
-
+    
 }
-
 
 void block_sigusr() {
     sigset_t sigset;
     sigemptyset(&sigset); // initalize set to empty
     sigaddset(&sigset, SIGUSR1); // add SIGUSR1 to set
     sigaddset(&sigset, SIGUSR2); // add SIGUSR2 to set
-    sigprocmask(SIG_BLOCK, &sigset, NULL); // modify mask
+    pthread_sigmask(SIG_BLOCK, &sigset, NULL); // modify mask
 
 }
 
@@ -172,21 +145,21 @@ void unblock_sigusr() {
     sigemptyset(&sigset); // initalize set to empty
     sigaddset(&sigset, SIGUSR1); // add SIGUSR1 to set
     sigaddset(&sigset, SIGUSR2); // add SIGUSR2 to set
-    sigprocmask(SIG_UNBLOCK, &sigset, NULL); // modify mask
+    pthread_sigmask(SIG_UNBLOCK, &sigset, NULL); // modify mask
 }
 
 void block_sigusr1() {
     sigset_t sigset;
     sigemptyset(&sigset); 
     sigaddset(&sigset, SIGUSR1); // add SIGUSR1 to set
-    sigprocmask(SIG_BLOCK, &sigset, NULL); 
+    pthread_sigmask(SIG_BLOCK, &sigset, NULL); 
 }
 
 void block_sigusr2() {
     sigset_t sigset;
     sigemptyset(&sigset); 
     sigaddset(&sigset, SIGUSR2); // add SIGUSR2 to set
-    sigprocmask(SIG_BLOCK, &sigset, NULL); 
+    pthread_sigmask(SIG_BLOCK, &sigset, NULL); 
 
 }
 
@@ -224,26 +197,30 @@ int sleep_milli(long given_time) {
 
 int init_mutex() { 
     // init mutex
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-    pthread_mutex_init(&(shm_ptr->mutex), &attr);
+    if(pthread_mutex_init(&(shm_ptr->mutex), NULL) != 0) {
+        puts("error");
+        return 0;
+    }
 
     return 1; // success
 }
 
 // increments signal sent counters
-void signal_generator() {
+void *signal_generator(void *arg) {
 
 	while (1) {    
 
-        sleep(0.5);
+        sleep(1);
 
         double rand_interval = randNum(10, 100); // generate random interval
-        //printf("\nrand interval: %lf", rand_interval);
         sleep_milli(rand_interval); // sleep random interval
 
         int signal = randSignal(); // randomly choose between SIGUSR1 or SIGUSR2
-        kill(0, signal); // send that signal to all children
+
+        // broadcast signal to all threads
+        for(size_t i = 0; i < N_THREADS; i++) {
+            pthread_kill(threads[i], signal);
+        }
 
         if (signal == SIGUSR1){ // SIGUSR1
             
@@ -251,7 +228,6 @@ void signal_generator() {
             pthread_mutex_lock(&(shm_ptr->mutex));
 
             shm_ptr->sigusr1_sent++; //increment signal counter
-            shm_ptr->total_signals++;
             
             // release lock
             pthread_mutex_unlock(&(shm_ptr->mutex));
@@ -262,7 +238,6 @@ void signal_generator() {
             pthread_mutex_lock(&(shm_ptr->mutex));
 
             shm_ptr->sigusr2_sent++; //increment signal counter
-            shm_ptr->total_signals++;
             
             // release lock
             pthread_mutex_unlock(&(shm_ptr->mutex));
@@ -271,47 +246,57 @@ void signal_generator() {
 
 }
 
-// increments signal received counters 
-void signal_handler(int signal) { 
+void *sigusr1_handler(void *arg) {
 
-    if (signal == SIGUSR1){ 
+    sigset_t sigset;
+    int return_val = 0;
+    int signal;
+    sigemptyset(&sigset);
+    // initalize set to empty
+    sigaddset(&sigset, SIGUSR1);
+
+    while(1) {
+
+        return_val = sigwait(&sigset, &signal);
 
         //acquire lock 
         pthread_mutex_lock(&(shm_ptr->mutex));
 
         shm_ptr->sigusr1_received++; //increment signal counter
-        shm_ptr->total_signals++;
         
         // release lock
         pthread_mutex_unlock(&(shm_ptr->mutex));
 
-    } else { // SIGUSR2
+    }
+
+}
+
+void *sigusr2_handler(void *arg) {
+
+    sigset_t sigset;
+    int return_val = 0;
+    int signal;
+    sigemptyset(&sigset);
+    // initalize set to empty
+    sigaddset(&sigset, SIGUSR2);
+
+    while(1) {
+
+        return_val = sigwait(&sigset, &signal);
 
         //acquire lock 
         pthread_mutex_lock(&(shm_ptr->mutex));
 
         shm_ptr->sigusr2_received++; //increment signal counter
-        shm_ptr->total_signals++;
         
         // release lock
         pthread_mutex_unlock(&(shm_ptr->mutex));
-
     }
-
-}
-
-// signal handler process 
-void signal_handler_main() {
-
-    while(1) {
-        sleep(1);
-    }
-
 }
 
 
 // signal reporting process 
-int signal_reporter_main() {
+void *signal_reporter_main(void *arg) {
 
     sigset_t sigset;
     int return_val = 0;
@@ -324,8 +309,6 @@ int signal_reporter_main() {
     while(1) {
 
         return_val = sigwait(&sigset, &signal);
-
-        shm_ptr->total_signals++;
 
         // every 10 signals
         if(shm_ptr->signal_counter == 10) {
@@ -409,15 +392,8 @@ void print_avg_time_gap() {
     //printf("\ntotal_1: %d total_time_1: %d", num_1, total_time_1);
     //printf("\ntotal_2: %d total_time_2: %d", num_2, total_time_2);
 
-    double avg_1 = 0;
-    double avg_2 = 0;
-    if(num_1 > 0) {
-        avg_1 = total_time_1/(double)num_1;
-    }
-    if(num_2 > 0) {
-        avg_2 = total_time_2/(double)num_2;
-    }
-
+    double avg_1 = total_time_1/(double)num_1;
+    double avg_2 = total_time_2/(double)num_2;
     printf("\naverage time between SIGUSR1: %f\naverage time between SIGUSR2: %f", avg_1, avg_2);
 
 }
