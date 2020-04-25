@@ -134,8 +134,9 @@ int main() {
         }
     }
 
-    sleep(30);
-    exit_program();
+    //sleep(30);
+    //printf("\ntotal signals: %d", shm_ptr->total_signals);
+    //exit_program();
 
     while(1) {
         if(shm_ptr->total_signals >= 10000) {
@@ -147,7 +148,6 @@ int main() {
 }
 
 void exit_program() {
-    puts("killing children");
     for (int i = 0; i < 8; i++){
         kill(PIDs[i], SIGTERM);
     }

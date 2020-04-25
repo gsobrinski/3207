@@ -129,8 +129,9 @@ int main() {
         }
     }
 
-    //sleep(30);
-    //exit(0);
+    sleep(30);
+    printf("\ntotal signals: %d", shm_ptr.total_signals);
+    exit(0);
 
     while(1) {
         if(shm_ptr.total_signals >= 10000) {
