@@ -1,0 +1,5 @@
+total 0
+drwxrwxrwx 1 gsobrinski99 gsobrinski99 4096 Mar 23 17:03 .
+drwxrwxrwx 1 gsobrinski99 gsobrinski99 4096 Mar 23 17:03 ..
+-rwxrwxrwx 1 gsobrinski99 gsobrinski99    0 Mar 23 17:03 testing.txt
+-rwxrwxrwx 1 gsobrinski99 gsobrinski99    0 Mar 23 17:03 texting.txt
